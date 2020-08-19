@@ -1,0 +1,410 @@
+#+TITLE: 陽性患者数の変動分析
+#+SUBTITLE: Poissonモデルの母数の追跡
+#+AUTHOR: N. Murata 
+#+SUBJECT: メモ
+#+KEYWORD: 感染症，確率モデル，状態空間モデル，
+#+LANGUAGE: japanese
+#+LaTeX_CLASS: scrartcl
+#+LaTeX_CLASS_OPTIONS: [10pt,oneside,fleqn]
+#+LATEX_HEADER: \usepackage{myhandout}
+#+STARTUP: overview
+#+STARTUP: hidestars
+#+OPTIONS: date:t H:4 num:t toc:nil \n:nil
+#+OPTIONS: @:t ::t |:t ^:t -:t f:t *:t TeX:t LaTeX:t 
+#+OPTIONS: skip:nil d:nil todo:t pri:nil tags:not-in-toc
+#+LINK_UP:
+#+LINK_HOME:
+#+PROPERTY: header-args:R :session *R* :cache yes 
+#+PROPERTY: header-args:R+ :exports both :results output
+#+PROPERTY: header-args:R+ :tangle yes
+
+# C-c C-v t tangle
+# C-c C-e l l export latex file
+# C-c C-e l p export pdf file
+
+# tangle で書き出した際のヘッダ
+#+begin_src R :eval no :exports none :tangle yes
+  ### 状態空間モデルによる指数分布族の母数の追跡
+  ### tokyo_covid19_patients データを用いた例
+#+end_src
+#+begin_src R :exports none :tangle no
+  quartz(file="figs/patients_plot.pdf",width=8,height=6,type="pdf")
+#+end_src
+
+* はじめに
+
+陽性患者数は日々変動するが，
+検査機関の稼働状況により，その数は大きく変動する．
+このため，日報の値をそのまま用いるのではなく，
+週ごとあるいは移動平均などによる集計が多くの場合用いられる．
+また，増減を定量的に評価・予測するためには，
+SIR系モデルに基づく実効再生産率の推定値などが用いられる．
+
+本稿では，
+観測データが Poisson 分布に従うとして，
+その母数の変動を状態空間モデルで記述することにより，
+母数の変動と週単位の変動を分解し，
+実質的な患者数の増減の様子を取り出すことを試みる．[fn:1]
+
+図示やモデルの構築に際しては以下の package を用いる．
+
+#+attr_latex: :options linenos
+#+begin_src R
+  ## パッケージの読み込み
+  library(tidyverse)
+  library(scales) # 年月日表示
+  library(plotly) 
+  library(zoo)    # 移動平均のため
+  library(KFAS)   # 状態空間モデルの構成
+#+end_src
+
+* データの視覚化
+
+東京都が公開しているCOVID-19のデータは，
+陽性患者ごとの属性情報なので，
+これを日毎の陽性患者数として集計する．[fn:2]
+
+#+attr_latex: :options linenos,breaklines,breakanywhere
+#+begin_src R
+  ## データの取得と整理 (東京都)
+  myRawData <- read.csv("https://stopcovid19.metro.tokyo.lg.jp/data/130001_tokyo_covid19_patients.csv")
+  myTable <- table(myRawData["公表_年月日"])
+  myData <- data.frame( # 集計
+    date=as.Date(names(myTable)), # 年月日
+    patients=as.vector(myTable))  # 陽性者数
+#+end_src
+
+陽性患者数の推移を図示すると
+図\ref{fig:1} のようになる．
+各日の陽性患者数を点で，
+7日および14日の移動平均をそれぞれ青と橙の実線で表示している．
+
+#+begin_export latex
+\begin{figure}[htbp]
+  \sidecaption{東京都の陽性患者数の推移．
+    青は7日移動平均，橙は14日移動平均を表す．
+    \label{fig:1}}
+  \centering
+  \GraphFile{figs/patients_plot}
+  \myGraph[1]{}
+\end{figure}
+#+end_export
+
+#+attr_latex: :options linenos
+#+begin_src R
+  ## データの視覚化
+  p <-
+    ggplot(data = myData,
+           mapping = aes(x = date,
+                         y = patients)) +
+    geom_point() + 
+    geom_line(data = myData %>% # 7日移動平均
+                mutate(patients = zoo::rollmean(x = patients,
+                                                k = 7, 
+                                                align = "right",
+                                                fill = NA)),
+              color = "blue", alpha = 0.5, size = 1,
+              na.rm = TRUE) +
+    geom_line(data = myData %>% # 14日移動平均
+                mutate(patients = zoo::rollmean(x = patients,
+                                                k = 14, 
+                                                align = "right",
+                                                fill = NA)),
+              color = "orange", alpha = 0.5, size = 1,
+              na.rm = TRUE) +
+    scale_x_date(labels = date_format("%y-%m-%d"), # 年月日表示
+                 breaks = date_breaks("1 week")) + # 週毎
+    theme(axis.text.x = element_text(angle = 90, 
+                                     vjust = 0.5, hjust=1)) +
+    labs(title = "Tokyo COVID-19 patients",
+         x = "date",
+         y = "number of patients")
+  print(p) # グラフ出力
+  ggplotly() # plotly表示 (browser)
+#+end_src
+
+* モデルの構成
+
+時刻 $t$ (年月日)の陽性患者数を $X_{t}$ とし，
+$X_{t}$ は母数 $\lambda_{t}$ の Poisson 分布に従うとする．
+#+begin_export latex
+  \begin{align}
+    X_{t}\sim &\mathcal{P}_{o}(\lambda_{t}), \\   
+    &\Prob{X_{t}=k}=\frac{\lambda_{t}^{k}e^{\lambda_{t}}}{k!}
+  \end{align}
+#+end_export
+
+このとき母数 $\lambda_{t}$ の対数は
+以下の成分に分解されると仮定する．
+#+begin_export latex
+  \begin{equation}
+    \log\lambda_{t}
+    =\mu_{t}+c_{t}
+  \end{equation}
+#+end_export
+
+成分 $\mu_{t}$ は2次のトレンド成分で[fn:3]
+#+begin_export latex
+  \begin{align}
+    \mu_{t+1}
+    &=\mu_{t}+\nu_{t}+\xi_{t},&&\xi_{t}\sim\mathcal{N}(0,Q_{\mathrm{level},t})\\
+    \nu_{t+1}
+    &=\nu_{t}+\zeta_{t},&&\zeta_{t}\sim\mathcal{N}(0,Q_{\mathrm{slope},t})
+  \end{align}
+#+end_export
+に従うものとする．
+変数 $\mu_{t}$ はトレンド成分の水準 (level) を表し，
+変数 $\nu_{t}$ は勾配 (slope) を表しトレンド成分の増減を決定する．
+
+成分 $c_{t}$ は周期成分で[fn:4]
+#+begin_export latex
+  \begin{align}
+    c_{t+1}
+    &=c_{t}\cos\tau+c^{*}_{t}\sin\tau+\omega_{t},\\
+    c^{*}_{t+1}
+    &=-c_{t}\sin\tau+c^{*}_{t}\sin\tau+\omega^{*}_{t},
+    &&\omega_{t},\omega^{*}_{t}\sim\mathcal{N}(0,Q_{\mathrm{cycle},t})
+  \end{align}
+#+end_export
+に従うものとする．
+ただし，$\tau$ は定数で，
+周期を $s$ としたとき
+$\tau=2\pi/s$ で与えられる．
+検査機関の稼働状況は週日・休日に依存すると考えられるので，
+以降 $s=7$ を用いる．
+
+KFAS package を用いて
+上記のモデルを構成する．
+トレンド成分においては，
+水準の変動の分散を $Q_{\mathrm{level}}=0$
+とし，
+勾配の変動の分散のみ未知母数 $Q_{\mathrm{slope}}=NA$ として推定する．
+また，周期成分の変動の分散は $Q_{\mathrm{cycle}}=0.05$ としている．[fn:5]
+
+#+attr_latex: :options linenos
+#+begin_src R
+  ## 状態空間モデルの構成
+  myModel <-
+    SSModel(data = myData, 
+	    formula = patients ~ # 目的変数
+	      -1 + # 定数項を持たない
+	      SSMtrend(degree = 2, # トレンド成分の定義
+		       Q = list(0,NA)) +
+	      SSMcycle(period = 7, # 周期成分の定義
+		       Q = 0.05),
+	    distribution = "poisson") # 目的変数は Poisson 分布
+  stateName <- colnames(myModel$Z) # 状態変数の名称 
+#+end_src
+
+* 推定
+
+モデルの母数推定(トレンド成分の分散)
+および状態推定(状態のsmoothing/filtering)は
+以下で行うことができる．
+
+#+attr_latex: :options linenos
+#+begin_src R
+  ## 母数推定
+  fitModel <- fitSSM(myModel, 
+		     inits = 1,
+		     method = "BFGS")
+  ## 状態推定 (推定した母数を用いる)
+  kfsModel <- KFS(fitModel$model)
+#+end_src
+
+推定した状態を，
+信頼区間付きで表示すると以下のようになる．
+
+#+begin_export latex
+\begin{figure}[htbp]
+  \sidecaption{状態空間モデルによる各成分の推定．
+    \label{fig:2}}
+  \centering
+  \myGraph[1]{}
+\end{figure}
+#+end_export
+
+#+attr_latex: :options linenos
+#+begin_src R
+  alpha <- 0.05 # 有意水準
+  zq <- qnorm(1-alpha/2) # 正規分布の (1-alpha/2) 分位点
+  tmp <- # 必要な状態変数を取り出す
+    cbind(myData["date"],
+	  kfsModel$alphahat,
+	  t(sqrt(apply(kfsModel$V,3,diag))))
+  names(tmp)[-1] <- # 名前を付与
+    paste(rep(c("value","sd"), each = length(stateName)),
+	  rep(stateName, times = 2),
+	  sep = "_")
+  myState <- # tidy data 化
+    tmp %>% 
+    pivot_longer(
+      -date,
+      names_to = c(".value", "name"), 
+      names_pattern = "(.*)_(.*)") %>%
+    mutate_at("name", ~factor(., levels = unique(.)))
+  p <- 
+    ggplot(data = myState, group = name,
+	   mapping = aes(x = date,
+			 y = value)) +
+    geom_line() +
+    geom_ribbon(mapping = aes(ymin = value-zq*sd,
+			      ymax = value+zq*sd),
+		fill = "blue", alpha = 0.2) +
+    facet_grid(name ~ ., scale = "free_y") + 
+    scale_x_date(labels = date_format("%y-%m-%d"), 
+		 breaks = date_breaks("1 week")) + 
+    theme(axis.text.x = element_text(angle = 90,
+				     vjust = 0.5, hjust=1)) +
+    labs(title = "Poisson model with trend and cycle",
+	 x = "date",
+	 y = "estimates")
+  print(p)
+  ggplotly()
+#+end_src
+
+さらに，
+状態推定をもとに
+周期成分を取り除いた結果を実データに重ねると以下のようになる．
+
+#+begin_export latex
+\begin{figure}[htbp]
+  \sidecaption{状態空間モデルによる平均の推定．
+    \label{fig:3}}
+  \centering
+  \myGraph[1]{}
+\end{figure}
+#+end_export
+
+#+attr_latex: :options linenos
+#+begin_src R
+  ## 状態空間モデルにもとづく平均の推定
+  tmp <- KFAS::signal(kfsModel,
+		      states = "trend")
+  tmpa <- tmp$signal
+  tmpb <- sqrt(tmp$variance[1,1,])
+  p <-
+    ggplot(data = myData %>%
+	     dplyr::mutate(mean = exp(tmpa),
+			   lwr = exp(tmpa - zq*tmpb),
+			   upr = exp(tmpa + zq*tmpb)),
+	   mapping = aes(x = date,
+			 y = patients)) +
+    geom_point() +
+    geom_line(mapping = aes(y = mean),
+	      color = "red", alpha = 0.5, size = 1) +
+    geom_ribbon(mapping = aes(ymin = lwr, ymax = upr),
+		fill = "red", alpha = 0.2) +
+    scale_x_date(labels = date_format("%y-%m-%d"), 
+		 breaks = date_breaks("1 week")) + 
+    theme(axis.text.x = element_text(angle = 90, 
+				     vjust = 0.5, hjust=1)) +
+    labs(title = "Tokyo COVID-19 patients",
+	 x = "date",
+	 y = "number of patients")
+  print(p) # グラフ出力
+  ggplotly() # plotly表示 (browser)
+#+end_src
+
+* おわりに
+
+移動平均でも窓幅を適切に選べば増減の傾向を捉えることは可能であるが，
+状態空間モデルでは背後にある確率的な力学系を仮定した上で，
+その分布を調べることができることにある．
+
+8月初旬から Poisson 分布の母数は減少を始めているが，
+信頼区間を考慮に入れると8月中旬から減少の速度が遅くなっている
+と考えられる．
+
+* 補遺
+** 周期成分のモデルについて
+
+周期成分の変動の分散は既知としてモデルの構築を行ったが，
+これも本来は推定すべきである．
+単に $Q_{\mathrm{cycle}}=NA$
+としても最適化してくれない．[fn:6]
+
+適当な範囲で $Q_{\mathrm{cycle}}$ の値を変えながら，
+解の尤度を検証した結果 $Q_{\mathrm{cycle}}=0.05$ としている．
+
+#+begin_export latex
+\begin{figure}[htbp]
+  \sidecaption{$Q_{\mathrm{cycle}}$ の検討について．
+    \label{fig:4}}
+  \centering
+  \myGraph*{}
+\end{figure}
+#+end_export
+
+#+attr_latex: :options linenos
+#+begin_src R
+  ## 周期成分の変動の分散の検討
+  Qc <- 10^seq(0,-2,length=32)/2
+  ll <- double(length(Qc))
+  for(i in 1:length(Qc)) {
+      myModel <-
+          SSModel(data = myData, 
+                  formula = patients ~ 
+                      -1 + 
+                      SSMtrend(degree = 2, 
+                               Q = list(0,NA)) +
+                      SSMcycle(period = 7, 
+                               Q = Qc[i]), # 変更
+                  distribution = "poisson") 
+      fitModel <- fitSSM(myModel, inits = 1, method = "BFGS")
+      ll[i] <- logLik(fitModel$model)
+  }
+  p <-
+      ggplot(data = data.frame(Q=Qc, logLik=ll),
+             mapping = aes(x = Q, y = logLik)) +
+      geom_line() +
+      scale_x_log10() +
+      labs(title = "assessment of variance",
+         x = "Q_cycle",
+         y = "log likelihood")
+  print(p)
+  print(Qc[which.max(ll)])
+#+end_src
+
+** 他のデータについて
+
+全国のデータは厚生労働省から得られる．
+こちらは単純な集計データなので，
+例えば以下のようにすれば同様に利用できる．
+
+#+attr_latex: :options linenos,breaklines,breakanywhere
+#+begin_src R :eval no
+  ## データの取得と整理 (厚生労働省)
+  myData <- read.csv("https://www.mhlw.go.jp/content/pcr_positive_daily.csv")
+  names(myData) <- c("date","patients")
+  myData$date <- as.Date(myData$date)
+#+end_src
+
+#+begin_src R :exports none :tangle yes
+  dev.off()
+#+end_src
+
+* Footnotes
+
+[fn:1]状態空間モデルを扱うための package はいくつかあるが，
+本稿ではモデルの記述が明解であった
+[[https://cran.r-project.org/web/packages/KFAS/vignettes/KFAS.pdf][KFAS]]
+を用いる．
+
+[fn:2][[https://stopcovid19.metro.tokyo.lg.jp/data/130001_tokyo_covid19_patients.csv][東京都の陽性患者データ]]
+
+[fn:3]母数 $\lambda_{t}$ の時間変化を捉えるために，
+2次の系を仮定して増減の推定を行う．
+
+[fn:4]季節成分としてもよいが，
+KFASでは季節成分の推定方法として
+周期成分を半周期で平滑化したものと
+周期分のdummy変数を用いたものが用意されており，
+前者を推奨しているので，ここでは簡単な周期成分を用いた．
+
+[fn:5]補遺参照のこと．
+
+[fn:6]最適化の設定を適切にするか，
+母数の更新関数をおそらく設定する必要があるが，
+検証できていない．
+
