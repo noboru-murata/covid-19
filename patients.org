@@ -6,7 +6,7 @@
 #+LANGUAGE: japanese
 #+LaTeX_CLASS: scrartcl
 #+LaTeX_CLASS_OPTIONS: [10pt,oneside,fleqn]
-#+LATEX_HEADER: \usepackage{myhandout}
+#+LATEX_HEADER: \usepackage[list=minted]{myhandout}
 #+STARTUP: overview
 #+STARTUP: hidestars
 #+OPTIONS: date:t H:4 num:t toc:nil \n:nil
