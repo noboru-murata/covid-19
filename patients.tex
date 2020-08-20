@@ -1,4 +1,4 @@
-% Created 2020-08-20 Thu 11:47
+% Created 2020-08-20 Thu 20:53
 % Intended LaTeX compiler: pdflatex
 \documentclass[10pt,oneside,fleqn]{scrartcl}
 
@@ -19,7 +19,7 @@
 
 \maketitle
 \section{はじめに}
-\label{sec:orge5b3cf4}
+\label{sec:orgb2c6e04}
 
 陽性患者数は日々変動するが，
 検査機関の稼働状況により，その数は大きく変動する．
@@ -49,7 +49,7 @@ library(KFAS)   # 状態空間モデルの構成
 \end{minted}
 
 \section{データの視覚化}
-\label{sec:orgdc35e8d}
+\label{sec:orgc4dac6a}
 
 東京都が公開しているCOVID-19のデータは，
 陽性患者ごとの属性情報なので，
@@ -113,7 +113,7 @@ ggplotly() # plotly表示 (browser)
 \end{minted}
 
 \section{モデルの構成}
-\label{sec:org083e53f}
+\label{sec:orgfc5139c}
 
 時刻 \(t\) (年月日)の陽性患者数を \(X_{t}\) とし，
 \(X_{t}\) は母数 \(\lambda_{t}\) の Poisson 分布に従うとする．
@@ -183,7 +183,7 @@ stateName <- colnames(myModel$Z) # 状態変数の名称
 \end{minted}
 
 \section{推定}
-\label{sec:org7ab7a10}
+\label{sec:orgb7832b5}
 
 モデルの母数推定(トレンド成分の分散)
 および状態推定(状態のsmoothing/filtering)は
@@ -221,7 +221,7 @@ names(tmp)[-1] <- # 名前を付与
 	sep = "_")
 myState <- # tidy data 化
   tmp %>% 
-  dplyr::pivot_longer(
+  tidyr::pivot_longer(
     -date,
     names_to = c(".value", "name"), 
     names_pattern = "(.*)_(.*)") %>%
@@ -245,11 +245,6 @@ p <-
 print(p)
 ggplotly()
 \end{minted}
-
-\begin{verbatim}
-エラー: 'pivot_longer' is not an exported object from 'namespace:dplyr'
-\end{verbatim}
-
 
 さらに，
 状態推定をもとに
@@ -291,7 +286,7 @@ ggplotly() # plotly表示 (browser)
 \end{minted}
 
 \section{おわりに}
-\label{sec:org6869797}
+\label{sec:org4837467}
 
 移動平均でも窓幅を適切に選べば増減の傾向を捉えることは可能であるが，
 状態空間モデルでは背後にある確率的な力学系を仮定した上で，
@@ -302,9 +297,9 @@ ggplotly() # plotly表示 (browser)
 と考えられる．
 
 \section{補遺}
-\label{sec:orgb4842eb}
+\label{sec:org72ec4f1}
 \subsection{周期成分のモデルについて}
-\label{sec:orgad36025}
+\label{sec:orgb66a6c6}
 
 周期成分の変動の分散は既知としてモデルの構築を行ったが，
 これも本来は推定すべきである．
@@ -357,7 +352,7 @@ print(Qc[which.max(ll)])
 \end{verbatim}
 
 \subsection{他のデータについて}
-\label{sec:org2dee4cd}
+\label{sec:orge9e65c5}
 
 全国のデータは厚生労働省から得られる．
 こちらは単純な集計データなので，

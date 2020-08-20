@@ -78,7 +78,7 @@ names(tmp)[-1] <- # 名前を付与
 	sep = "_")
 myState <- # tidy data 化
   tmp %>% 
-  dplyr::pivot_longer(
+  tidyr::pivot_longer(
     -date,
     names_to = c(".value", "name"), 
     names_pattern = "(.*)_(.*)") %>%

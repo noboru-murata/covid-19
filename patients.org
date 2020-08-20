@@ -241,7 +241,7 @@ KFAS package を用いて
 	  sep = "_")
   myState <- # tidy data 化
     tmp %>% 
-    dplyr::pivot_longer(
+    tidyr::pivot_longer(
       -date,
       names_to = c(".value", "name"), 
       names_pattern = "(.*)_(.*)") %>%
