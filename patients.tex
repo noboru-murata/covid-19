@@ -1,4 +1,4 @@
-% Created 2020-08-20 Thu 21:22
+% Created 2020-08-21 Fri 00:14
 % Intended LaTeX compiler: pdflatex
 \documentclass[10pt,oneside,fleqn]{scrartcl}
 
@@ -19,7 +19,7 @@
 
 \maketitle
 \section{はじめに}
-\label{sec:orgb81f788}
+\label{sec:orgdd479d9}
 
 陽性患者数は日々変動するが，
 検査機関の稼働状況により，その数は大きく変動する．
@@ -49,7 +49,7 @@ library(KFAS)   # 状態空間モデルの構成
 \end{minted}
 
 \section{データの視覚化}
-\label{sec:org9cddad0}
+\label{sec:org7faea0a}
 
 東京都が公開しているCOVID-19のデータは，
 陽性患者ごとの属性情報なので，
@@ -113,7 +113,7 @@ ggplotly() # plotly表示 (browser)
 \end{minted}
 
 \section{モデルの構成}
-\label{sec:org36ed814}
+\label{sec:orgb9a303d}
 
 時刻 \(t\) (年月日)の陽性患者数を \(X_{t}\) とし，
 \(X_{t}\) は母数 \(\lambda_{t}\) の Poisson 分布に従うとする．
@@ -183,10 +183,10 @@ stateName <- colnames(myModel$Z) # 状態変数の名称
 \end{minted}
 
 \section{推定}
-\label{sec:org1e983b8}
+\label{sec:org21314e5}
 
 モデルの母数推定(トレンド成分の分散)
-および状態推定(状態のsmoothing/filtering)は
+および状態推定(状態の smoothing / filtering)は
 以下で行うことができる．
 
 \begin{minted}[,linenos]{r}
@@ -286,7 +286,7 @@ ggplotly() # plotly表示 (browser)
 \end{minted}
 
 \section{おわりに}
-\label{sec:org56aacef}
+\label{sec:orgc318efc}
 
 移動平均でも窓幅を適切に選べば増減の傾向を捉えることは可能であるが，
 状態空間モデルでは背後にある確率的な力学系を仮定した上で，
@@ -297,9 +297,9 @@ ggplotly() # plotly表示 (browser)
 と考えられる．
 
 \section{補遺}
-\label{sec:orge0beded}
+\label{sec:org16b5d41}
 \subsection{周期成分のモデルについて}
-\label{sec:orgfd29001}
+\label{sec:orgecbff81}
 
 周期成分の変動の分散は既知としてモデルの構築を行ったが，
 これも本来は推定すべきである．
@@ -352,7 +352,7 @@ print(Qc[which.max(ll)])
 \end{verbatim}
 
 \subsection{他のデータについて}
-\label{sec:org5d1b4e2}
+\label{sec:orgd1c9b7b}
 
 全国のデータは厚生労働省から得られる．
 こちらは単純な集計データなので，

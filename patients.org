@@ -202,7 +202,7 @@ KFAS package を用いて
 * 推定
 
 モデルの母数推定(トレンド成分の分散)
-および状態推定(状態のsmoothing/filtering)は
+および状態推定(状態の smoothing / filtering)は
 以下で行うことができる．
 
 #+attr_latex: :options linenos
