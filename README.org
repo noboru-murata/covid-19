@@ -1,0 +1,26 @@
+#+TITLE: COVID-19 関連のデータの分析
+#+OPTIONS: toc:nil
+# C-c C-e m m
+
+* 目的
+- 関連データがいろいろ整備されているので統計分析を試行
+- orgmode/R の実験
+  - org-babel で reproducible に
+  - ox-latex の調整と mystyles の整理
+  - ggplot の最近の変更を catch up
+
+* 東京都の公開データ
+  - https://stopcovid19.metro.tokyo.lg.jp/data/130001_tokyo_covid19_patients.csv
+  - 陽性患者数の増減の傾向の分析
+    - 簡便な状態空間モデル
+    - トレンド成分と周期成分の分解
+    - 2次のトレンドにして勾配を推定
+
+* TODO 人の移動に関するデータ 
+  - https://covid19.apple.com/mobility
+  - https://www.google.com/covid19/mobility/
+
+* 課題
+  - 状態空間モデルの推定方法をまとめる
+
+  
