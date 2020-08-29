@@ -9,7 +9,7 @@
   - ox-latex の調整と mystyles の整理
   - ggplot の最近の変更を catch up
 
-* 東京都の公開データ
+* 東京都の公開データ (patients)
   - https://stopcovid19.metro.tokyo.lg.jp/data/130001_tokyo_covid19_patients.csv
   - 陽性患者数の増減の傾向の分析
     - 簡便な状態空間モデル
