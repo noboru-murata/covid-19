@@ -1,4 +1,4 @@
-% Created 2020-08-21 Fri 00:14
+% Created 2020-08-29 Sat 21:31
 % Intended LaTeX compiler: pdflatex
 \documentclass[10pt,oneside,fleqn]{scrartcl}
 
@@ -19,14 +19,14 @@
 
 \maketitle
 \section{はじめに}
-\label{sec:orgdd479d9}
+\label{sec:orgfa8f515}
 
 陽性患者数は日々変動するが，
 検査機関の稼働状況により，その数は大きく変動する．
 このため，日報の値をそのまま用いるのではなく，
 週ごとあるいは移動平均などによる集計が多くの場合用いられる．
 また，増減を定量的に評価・予測するためには，
-SIR系モデルに基づく実効再生産率の推定値などが用いられる．
+SIR系モデルに基づく実効再生産数の推定値などが用いられる．
 
 本稿では，
 観測データが Poisson 分布に従うとして，
@@ -49,7 +49,7 @@ library(KFAS)   # 状態空間モデルの構成
 \end{minted}
 
 \section{データの視覚化}
-\label{sec:org7faea0a}
+\label{sec:orga2a5b7c}
 
 東京都が公開しているCOVID-19のデータは，
 陽性患者ごとの属性情報なので，
@@ -57,11 +57,13 @@ library(KFAS)   # 状態空間モデルの構成
 
 \begin{minted}[,linenos,breaklines,breakanywhere]{r}
 ## データの取得と整理 (東京都)
-myRawData <- read.csv("https://stopcovid19.metro.tokyo.lg.jp/data/130001_tokyo_covid19_patients.csv")
-myTable <- table(myRawData["公表_年月日"])
-myData <- data.frame( # 集計
-  date = as.Date(names(myTable)), # 年月日
-  patients = as.vector(myTable))  # 陽性者数
+myData <-
+    read.csv("https://stopcovid19.metro.tokyo.lg.jp/data/130001_tokyo_covid19_patients.csv") %>% 
+    dplyr::select(公表_年月日) %>% 
+    dplyr::rename(date=公表_年月日) %>% 
+    dplyr::transmute(date=as.Date(date)) %>%
+    dplyr::group_by(date) %>% 
+    dplyr::summarize(patients = n()) # 陽性者数
 \end{minted}
 
 陽性患者数の推移を図示すると
@@ -113,7 +115,7 @@ ggplotly() # plotly表示 (browser)
 \end{minted}
 
 \section{モデルの構成}
-\label{sec:orgb9a303d}
+\label{sec:orgf4fe9d3}
 
 時刻 \(t\) (年月日)の陽性患者数を \(X_{t}\) とし，
 \(X_{t}\) は母数 \(\lambda_{t}\) の Poisson 分布に従うとする．
@@ -168,6 +170,22 @@ KFAS package を用いて
 勾配の変動の分散のみ未知母数 \(Q_{\mathrm{slope}}=NA\) として推定する．
 また，周期成分の変動の分散は \(Q_{\mathrm{cycle}}=0.05\) としている．\footnote{補遺参照のこと．}
 
+まとめると，モデルは以下のようになる．
+\begin{align}
+  X_{t}\sim &\mathcal{P}_{o}(\lambda_{t}), \\   
+  \log\lambda_{t}
+  &=\mu_{t}+c_{t}\\
+  \mu_{t+1}
+  &=\mu_{t}+\nu_{t},\\
+  \nu_{t+1}
+  &=\nu_{t}+\zeta_{t},&&\zeta_{t}\sim\mathcal{N}(0,Q_{\mathrm{slope},t})\\
+  c_{t+1}
+  &=c_{t}\cos\tau+c^{*}_{t}\sin\tau+\omega_{t},\\
+  c^{*}_{t+1}
+  &=-c_{t}\sin\tau+c^{*}_{t}\sin\tau+\omega^{*}_{t},
+  &&\omega_{t},\omega^{*}_{t}\sim\mathcal{N}(0,Q_{\mathrm{cycle},t})
+\end{align}
+
 \begin{minted}[,linenos]{r}
 ## 状態空間モデルの構成
 myModel <-
@@ -183,19 +201,21 @@ stateName <- colnames(myModel$Z) # 状態変数の名称
 \end{minted}
 
 \section{推定}
-\label{sec:org21314e5}
+\label{sec:org420fffc}
 
 モデルの母数推定(トレンド成分の分散)
 および状態推定(状態の smoothing / filtering)は
 以下で行うことができる．
 
 \begin{minted}[,linenos]{r}
-## 母数推定
-fitModel <- fitSSM(myModel, 
+## 母数推定 
+fit <- fitSSM(myModel, 
 		   inits = 0, # 初期値
 		   method = "BFGS") # 最適化法
 ## 状態推定 (推定した母数を用いる)
-kfsModel <- KFS(fitModel$model)
+out <- KFS(fit$model,
+		filtering = c("state","mean"),
+		smoothing = c("state","mean"))
 \end{minted}
 
 推定した状態を，
@@ -213,8 +233,8 @@ alpha <- 0.05 # 有意水準 (信頼区間の準備)
 zq <- qnorm(1-alpha/2) # 正規分布の (1-alpha/2) 分位点
 tmp <- # 必要な状態変数を取り出す
   cbind(myData["date"],
-	kfsModel$alphahat, # 状態変数の平均
-	t(sqrt(apply(kfsModel$V,3,diag)))) # 標準偏差
+	out$alphahat, # 状態変数の平均
+	t(sqrt(apply(out$V,3,diag)))) # 標準偏差
 names(tmp)[-1] <- # 名前を付与
   paste(rep(c("value","sd"), each = length(stateName)),
 	rep(stateName, times = 2),
@@ -259,7 +279,7 @@ ggplotly()
 
 \begin{minted}[,linenos]{r}
 ## 状態空間モデルにもとづく平均の推定
-tmp <- KFAS::signal(kfsModel, states = "trend")
+tmp <- KFAS::signal(out, states = "trend")
 tmpa <- tmp$signal
 tmpb <- sqrt(tmp$variance[1,1,])
 p <-
@@ -286,7 +306,7 @@ ggplotly() # plotly表示 (browser)
 \end{minted}
 
 \section{おわりに}
-\label{sec:orgc318efc}
+\label{sec:orgc538cf5}
 
 移動平均でも窓幅を適切に選べば増減の傾向を捉えることは可能であるが，
 状態空間モデルでは背後にある確率的な力学系を仮定した上で，
@@ -297,9 +317,231 @@ ggplotly() # plotly表示 (browser)
 と考えられる．
 
 \section{補遺}
-\label{sec:org16b5d41}
+\label{sec:org30efe99}
+\subsection{状態空間モデルによる推定}
+\label{sec:org6f48e40}
+
+状態空間モデルによる推定の仕組みを見るために，
+陽性患者数の対数値の状態空間モデルとして
+簡略化したもの考える．
+
+まず，図\ref{fig:4} に陽性患者数の対数値 \(Y_{t}\) を示す．
+\begin{figure}[htbp]
+  \sidecaption{陽性患者数の対数値の系列．
+    \label{fig:4}}
+  \centering
+  \myGraph*{}
+\end{figure}
+
+\begin{minted}[,linenos]{r}
+## 簡単な設定で実験
+Y <- log(myData$patients) # 陽性患者数の対数
+tmp <- tibble(t = 1:length(Y),
+	      Y = Y)
+p <- 
+    ggplot(data = tmp, 
+	   mapping = aes(x = t,
+			 y = Y)) +
+    geom_line(color = "green", alpha = 0.8) +
+    xlab(label = "time")
+print(p)
+\end{minted}
+
+陽性患者数の対数値 \(Y_{t}\) の状態空間モデルとして，
+2次のトレンド成分のみからなるモデルを，
+観測は単純な加法雑音を考える．
+\begin{align}
+  Y_{t}
+  &=
+  \mu_{t}+\epsilon_{t},&&\epsilon_{t}\sim\mathcal{N}(0,H_{t})\\
+  \mu_{t+1}
+  &=\mu_{t}+\nu_{t},\\
+  \nu_{t+1}
+  &=\nu_{t}+\zeta_{t},&&\zeta_{t}\sim\mathcal{N}(0,Q_{\mathrm{slope},t})
+\end{align}
+
+以下では
+勾配成分 (slope) の雑音の分散としては，
+本文で推定された \(Q_{\mathrm{slope}}\) を用いるが，
+まず，このパラメタの違いによって
+どのような状態変数が出現するか確認する．
+図\ref{fig:5} は
+勾配成分の雑音の分散を
+\(\lambda\times Q_{\mathrm{slope}},\;\lambda=0.3,1,3\)
+とした事前分布から，
+それぞれ
+16個の
+状態変数系列
+\(\mu_{t}\) (水準; level)
+および
+\(\nu_{t}\) (勾配; slope)
+をサンプリングした結果を示す．
+
+分散を大きくするほど，
+勾配のばらつきが大きくなり，
+その結果水準の増減幅も大きくなることがわかる．
+観測値 \(Y_{t}\) の範囲は \([0,6]\) 程度なので，
+それを記述する水準のばらつきも同程度になるように
+事前分布のパラメタが適切に選択される必要がある．
+以下では
+\(\lambda=1\)
+のモデルを用いる．
+
+\begin{figure*}[htbp]
+  \sidecaption{事前分布のパラメタの違いによる
+    状態変数の挙動．
+    \label{fig:5}}
+  \centering
+  \myGraph[.3]{$\lambda=0.3$}
+  \myGraph[.3]{$\lambda=1$}
+  \myGraph[.3]{$\lambda=3$}
+\end{figure*}
+
+\begin{minted}[,linenos]{r}
+## いくつかのモデルで状態の事前分布を確認
+Qs <- fitModel$model$Q[2,2,1] # 推定されたQslopeを利用
+tmpc <- tibble(t = 1,
+	       var = rep(c("level","slope"),each = 2),
+	       name = "V1",
+	       value = c(150,-150,1.5,-1.5))
+for(lambda in c(0.3,1,3)){
+    model <- # モデルを作成
+	SSModel(formula = Y ~ # 目的変数
+		    -1 + # 定数項を持たない
+		    SSMtrend(degree = 2, # トレンド成分の定義
+			     Q = list(0,lambda*Qs)), H = 0.1)
+    ## モデルにもとづいて状態を生成 (状態系列の事前分布)
+    tmpa <- simulateSSM(model,
+			nsim = 16,
+			conditional=FALSE)
+    tmpb <- 
+	rbind(tibble(t = 1:length(Y),
+		     var = "level",
+		     as_tibble(tmpa[,1,])),
+	      tibble(t = 1:length(Y),
+		     var = "slope",
+		     as_tibble(tmpa[,2,]))) %>%
+	tidyr::pivot_longer(-c(t,var)) 
+    p <- 
+	ggplot(data = tmpb, group = var,
+	       mapping = aes(x = t,
+			     y = value,
+			     color = name)) +
+	geom_blank(data = tmpc) +
+	geom_line(alpha = 0.5) +
+	facet_grid(var ~ ., scale = "free_y") +
+	theme(legend.position = "none") +
+	xlab(label = "time")
+    print(p)
+}
+\end{minted}
+
+事後分布の計算は，
+直感的には事前分布に従う系列の中から
+観測値と似通った系列を選び出す過程と考えることができる．
+図\ref{fig:6}
+では，
+事前分布からサンプリングされた多数 (30000個)
+の水準系列の中から，
+観測値との残差平方和 (残差の分散) が小さいもの16個を抽出した結果を示す．
+この程度のサンプリング数の中でもある程度似通った系列があることがわかるが，
+同時にサンプリングにもとづく方法は非常に効率が悪いこともわかる．
+
+\begin{figure}[htbp]
+  \sidecaption{事前分布からサンプリングされた変数
+    $\mu_{t}$ (level) のうち，
+    観測データ $Y_{t}$ と似たものを抽出した結果．
+    \label{fig:6}}
+  \centering
+  \myGraph*{}
+\end{figure}
+
+\begin{minted}[,linenos]{r}
+## モデルの設定 (以降で使うモデル)
+Qs <- fitModel$model$Q[2,2,1]
+model <-
+  SSModel(formula = Y ~ # 目的変数
+		    -1 + # 定数項を持たない
+		    SSMtrend(degree = 2, # トレンド成分の定義
+			     Q = list(0,Qs)), H = 0.1)
+## 事前分布からサンプリングした level から観測値 Y と相関の高いものを取り出す
+tmpa <- simulateSSM(model,
+		    nsim = 30000,
+		    conditional = FALSE)
+tmpb <- rbind(
+    tibble(t = 1:length(Y),
+	   var = "level",
+	   as_tibble(
+	       tmpa[,1,rank(apply(tmpa[,1,],2,
+				  function(x){var(x-Y)}))<17])) %>%
+    tidyr::pivot_longer(-c(t,var)),
+    tibble(t = 1:length(Y),
+	   var = "signal",
+	   name = "V17",
+	   value=Y))
+## 図示
+p <- 
+    ggplot(data = tmpb, group = var,
+	   mapping = aes(x = t,
+			 y = value,
+			 color = name)) +
+    geom_line(alpha = 0.5) +
+    facet_grid(var ~ ., scale = "free_y") +
+    theme(legend.position = "none") +
+    xlab(label = "time")
+print(p)
+\end{minted}
+
+実際の推定は，
+Bayes の定理にもとづいて事後分布を計算し，
+そこからサンプリングを行うことになる．
+この結果を図\ref{fig:8}
+に示す．\footnote{事後分布の計算が容易に行えるような
+モデルを用いるところが重要となる．}
+
+\begin{figure*}[htbp]
+  \sidecaption{状態空間モデルの推定．
+    \label{fig:8}}
+  \centering
+  \myGraph{事前分布からサンプリングされた状態変数}
+  \myGraph{事後分布からサンプリングされた状態変数}
+\end{figure*}
+
+\begin{minted}[,linenos]{r}
+## モデルにもとづいて状態を生成 (状態系列の事前分布)
+prior <- simulateSSM(model,
+		     nsim = 16,
+		     conditional = FALSE)
+## 観測データで条件付けて状態を生成 (状態系列の事後分布)
+postr <- simulateSSM(model,
+		     nsim = 16,
+		     conditional = TRUE)
+## 図示
+for(s in c("prior","postr")){
+    tmpa <- eval(parse(text=s))
+    tmpb <- 
+	rbind(tibble(t = 1:length(Y),
+		     var = "level",
+		     as_tibble(tmpa[,1,])),
+	      tibble(t = 1:length(Y),
+		     var = "slope",
+		     as_tibble(tmpa[,2,]))) %>%
+	tidyr::pivot_longer(-c(t,var)) 
+    p <- 
+	ggplot(data = tmpb, group = var,
+	       mapping = aes(x = t,
+			     y = value,
+			     color = name)) +
+	geom_line(alpha = 0.5) +
+	facet_grid(var ~ ., scale = "free_y") +
+	theme(legend.position = "none") +
+	xlab(label = "time")
+    print(p)
+}
+\end{minted}
+
 \subsection{周期成分のモデルについて}
-\label{sec:orgecbff81}
+\label{sec:orgda1cc78}
 
 周期成分の変動の分散は既知としてモデルの構築を行ったが，
 これも本来は推定すべきである．
@@ -313,7 +555,7 @@ ggplotly() # plotly表示 (browser)
 
 \begin{figure}[htbp]
   \sidecaption{$Q_{\mathrm{cycle}}$ の検討について．
-    \label{fig:4}}
+    \label{fig:9}}
   \centering
   \myGraph*{}
 \end{figure}
@@ -321,9 +563,9 @@ ggplotly() # plotly表示 (browser)
 \begin{minted}[,linenos]{r}
 ## 周期成分の変動の分散の検討
 Qc <- 10^seq(0,-2,length=32)/2
-ll <- double(length(Qc))
+lL <- double(length(Qc))
 for(i in 1:length(Qc)) {
-    myModel <-
+    tmp <-
 	SSModel(data = myData, 
 		formula = patients ~ 
 		    -1 + 
@@ -332,11 +574,12 @@ for(i in 1:length(Qc)) {
 		    SSMcycle(period = 7, 
 			     Q = Qc[i]), # 変更
 		distribution = "poisson") 
-    fitModel <- fitSSM(myModel, inits = 0, method = "BFGS")
-    ll[i] <- logLik(fitModel$model)
+    lL[i] <- logLik(fitSSM(tmp,
+			   inits = 0,
+			   method = "BFGS")$model)
 }
 p <-
-    ggplot(data = data.frame(Q=Qc, logLik=ll),
+    ggplot(data = data.frame(Q=Qc, logLik=lL),
 	   mapping = aes(x = Q, y = logLik)) +
     geom_line() +
     scale_x_log10() +
@@ -344,15 +587,11 @@ p <-
        x = "Q_cycle",
        y = "log likelihood")
 print(p)
-print(Qc[which.max(ll)])
+print(Qc[which.max(lL)])
 \end{minted}
 
-\begin{verbatim}
-[1] 0.05385525
-\end{verbatim}
-
 \subsection{他のデータについて}
-\label{sec:orgd1c9b7b}
+\label{sec:orgf110d25}
 
 全国のデータは厚生労働省から得られる．
 こちらは単純な集計データなので，

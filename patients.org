@@ -15,7 +15,7 @@
 #+LINK_UP:
 #+LINK_HOME:
 #+PROPERTY: header-args:R :session *R* :cache yes 
-#+PROPERTY: header-args:R+ :exports both :results output
+#+PROPERTY: header-args:R+ :exports both :results none
 #+PROPERTY: header-args:R+ :tangle yes
 
 # C-c C-v t (tangling .R)
@@ -39,7 +39,7 @@
 このため，日報の値をそのまま用いるのではなく，
 週ごとあるいは移動平均などによる集計が多くの場合用いられる．
 また，増減を定量的に評価・予測するためには，
-SIR系モデルに基づく実効再生産率の推定値などが用いられる．
+SIR系モデルに基づく実効再生産数の推定値などが用いられる．
 
 本稿では，
 観測データが Poisson 分布に従うとして，
@@ -68,11 +68,13 @@ SIR系モデルに基づく実効再生産率の推定値などが用いられ�
 #+attr_latex: :options linenos,breaklines,breakanywhere
 #+begin_src R
   ## データの取得と整理 (東京都)
-  myRawData <- read.csv("https://stopcovid19.metro.tokyo.lg.jp/data/130001_tokyo_covid19_patients.csv")
-  myTable <- table(myRawData["公表_年月日"])
-  myData <- data.frame( # 集計
-    date = as.Date(names(myTable)), # 年月日
-    patients = as.vector(myTable))  # 陽性者数
+  myData <-
+      read.csv("https://stopcovid19.metro.tokyo.lg.jp/data/130001_tokyo_covid19_patients.csv") %>% 
+      dplyr::select(公表_年月日) %>% 
+      dplyr::rename(date=公表_年月日) %>% 
+      dplyr::transmute(date=as.Date(date)) %>%
+      dplyr::group_by(date) %>% 
+      dplyr::summarize(patients = n()) # 陽性者数
 #+end_src
 
 陽性患者数の推移を図示すると
@@ -184,6 +186,24 @@ KFAS package を用いて
 勾配の変動の分散のみ未知母数 $Q_{\mathrm{slope}}=NA$ として推定する．
 また，周期成分の変動の分散は $Q_{\mathrm{cycle}}=0.05$ としている．[fn:5]
 
+まとめると，モデルは以下のようになる．
+#+begin_export latex
+  \begin{align}
+    X_{t}\sim &\mathcal{P}_{o}(\lambda_{t}), \\   
+    \log\lambda_{t}
+    &=\mu_{t}+c_{t}\\
+    \mu_{t+1}
+    &=\mu_{t}+\nu_{t},\\
+    \nu_{t+1}
+    &=\nu_{t}+\zeta_{t},&&\zeta_{t}\sim\mathcal{N}(0,Q_{\mathrm{slope},t})\\
+    c_{t+1}
+    &=c_{t}\cos\tau+c^{*}_{t}\sin\tau+\omega_{t},\\
+    c^{*}_{t+1}
+    &=-c_{t}\sin\tau+c^{*}_{t}\sin\tau+\omega^{*}_{t},
+    &&\omega_{t},\omega^{*}_{t}\sim\mathcal{N}(0,Q_{\mathrm{cycle},t})
+  \end{align}
+#+end_export
+
 #+attr_latex: :options linenos
 #+begin_src R
   ## 状態空間モデルの構成
@@ -207,12 +227,14 @@ KFAS package を用いて
 
 #+attr_latex: :options linenos
 #+begin_src R
-  ## 母数推定
-  fitModel <- fitSSM(myModel, 
+  ## 母数推定 
+  fit <- fitSSM(myModel, 
 		     inits = 0, # 初期値
 		     method = "BFGS") # 最適化法
   ## 状態推定 (推定した母数を用いる)
-  kfsModel <- KFS(fitModel$model)
+  out <- KFS(fit$model,
+                  filtering = c("state","mean"),
+                  smoothing = c("state","mean"))
 #+end_src
 
 推定した状態を，
@@ -233,8 +255,8 @@ KFAS package を用いて
   zq <- qnorm(1-alpha/2) # 正規分布の (1-alpha/2) 分位点
   tmp <- # 必要な状態変数を取り出す
     cbind(myData["date"],
-	  kfsModel$alphahat, # 状態変数の平均
-	  t(sqrt(apply(kfsModel$V,3,diag)))) # 標準偏差
+	  out$alphahat, # 状態変数の平均
+	  t(sqrt(apply(out$V,3,diag)))) # 標準偏差
   names(tmp)[-1] <- # 名前を付与
     paste(rep(c("value","sd"), each = length(stateName)),
 	  rep(stateName, times = 2),
@@ -282,7 +304,7 @@ KFAS package を用いて
 #+attr_latex: :options linenos
 #+begin_src R
   ## 状態空間モデルにもとづく平均の推定
-  tmp <- KFAS::signal(kfsModel, states = "trend")
+  tmp <- KFAS::signal(out, states = "trend")
   tmpa <- tmp$signal
   tmpb <- sqrt(tmp$variance[1,1,])
   p <-
@@ -319,19 +341,20 @@ KFAS package を用いて
 と考えられる．
 
 * 補遺
-** 周期成分のモデルについて
+#+begin_src R :eval no :exports none
+  ### 以下，補遺ためのコード
+#+end_src
 
-周期成分の変動の分散は既知としてモデルの構築を行ったが，
-これも本来は推定すべきである．
-単に $Q_{\mathrm{cycle}}=NA$
-としても最適化してくれない．[fn:6]
+** 状態空間モデルによる推定
 
-適当な範囲で $Q_{\mathrm{cycle}}$ の値を変えながら，
-解の尤度を検証した結果 $Q_{\mathrm{cycle}}=0.05$ としている．
+状態空間モデルによる推定の仕組みを見るために，
+陽性患者数の対数値の状態空間モデルとして
+簡略化したもの考える．
 
+まず，図\ref{fig:4} に陽性患者数の対数値 $Y_{t}$ を示す．
 #+begin_export latex
 \begin{figure}[htbp]
-  \sidecaption{$Q_{\mathrm{cycle}}$ の検討について．
+  \sidecaption{陽性患者数の対数値の系列．
     \label{fig:4}}
   \centering
   \myGraph*{}
@@ -340,11 +363,248 @@ KFAS package を用いて
 
 #+attr_latex: :options linenos
 #+begin_src R
+## 簡単な設定で実験
+Y <- log(myData$patients) # 陽性患者数の対数
+tmp <- tibble(t = 1:length(Y),
+              Y = Y)
+p <- 
+    ggplot(data = tmp, 
+           mapping = aes(x = t,
+                         y = Y)) +
+    geom_line(color = "green", alpha = 0.8) +
+    xlab(label = "time")
+print(p)
+#+end_src
+
+陽性患者数の対数値 $Y_{t}$ の状態空間モデルとして，
+2次のトレンド成分のみからなるモデルを，
+観測は単純な加法雑音を考える．
+#+begin_export latex
+  \begin{align}
+    Y_{t}
+    &=
+    \mu_{t}+\epsilon_{t},&&\epsilon_{t}\sim\mathcal{N}(0,H_{t})\\
+    \mu_{t+1}
+    &=\mu_{t}+\nu_{t},\\
+    \nu_{t+1}
+    &=\nu_{t}+\zeta_{t},&&\zeta_{t}\sim\mathcal{N}(0,Q_{\mathrm{slope},t})
+  \end{align}
+#+end_export
+
+以下では
+勾配成分 (slope) の雑音の分散としては，
+本文で推定された $Q_{\mathrm{slope}}$ を用いるが，
+まず，このパラメタの違いによって
+どのような状態変数が出現するか確認する．
+図\ref{fig:5} は
+勾配成分の雑音の分散を
+$\lambda\times Q_{\mathrm{slope}},\;\lambda=0.3,1,3$
+とした事前分布から，
+それぞれ
+16個の
+状態変数系列
+$\mu_{t}$ (水準; level)
+および
+$\nu_{t}$ (勾配; slope)
+をサンプリングした結果を示す．
+
+分散を大きくするほど，
+勾配のばらつきが大きくなり，
+その結果水準の増減幅も大きくなることがわかる．
+観測値 $Y_{t}$ の範囲は $[0,6]$ 程度なので，
+それを記述する水準のばらつきも同程度になるように
+事前分布のパラメタが適切に選択される必要がある．
+以下では
+$\lambda=1$
+のモデルを用いる．
+
+#+begin_export latex
+\begin{figure*}[htbp]
+  \sidecaption{事前分布のパラメタの違いによる
+    状態変数の挙動．
+    \label{fig:5}}
+  \centering
+  \myGraph[.3]{$\lambda=0.3$}
+  \myGraph[.3]{$\lambda=1$}
+  \myGraph[.3]{$\lambda=3$}
+\end{figure*}
+#+end_export
+
+#+attr_latex: :options linenos
+#+begin_src R
+## いくつかのモデルで状態の事前分布を確認
+Qs <- fitModel$model$Q[2,2,1] # 推定されたQslopeを利用
+tmpc <- tibble(t = 1,
+               var = rep(c("level","slope"),each = 2),
+               name = "V1",
+               value = c(150,-150,1.5,-1.5))
+for(lambda in c(0.3,1,3)){
+    model <- # モデルを作成
+        SSModel(formula = Y ~ # 目的変数
+              	    -1 + # 定数項を持たない
+               	    SSMtrend(degree = 2, # トレンド成分の定義
+               	             Q = list(0,lambda*Qs)), H = 0.1)
+    ## モデルにもとづいて状態を生成 (状態系列の事前分布)
+    tmpa <- simulateSSM(model,
+                        nsim = 16,
+                        conditional=FALSE)
+    tmpb <- 
+        rbind(tibble(t = 1:length(Y),
+                     var = "level",
+                     as_tibble(tmpa[,1,])),
+              tibble(t = 1:length(Y),
+                     var = "slope",
+                     as_tibble(tmpa[,2,]))) %>%
+        tidyr::pivot_longer(-c(t,var)) 
+    p <- 
+        ggplot(data = tmpb, group = var,
+               mapping = aes(x = t,
+                             y = value,
+                             color = name)) +
+        geom_blank(data = tmpc) +
+        geom_line(alpha = 0.5) +
+        facet_grid(var ~ ., scale = "free_y") +
+        theme(legend.position = "none") +
+        xlab(label = "time")
+    print(p)
+}
+#+end_src
+
+事後分布の計算は，
+直感的には事前分布に従う系列の中から
+観測値と似通った系列を選び出す過程と考えることができる．
+図\ref{fig:6}
+では，
+事前分布からサンプリングされた多数 (30000個)
+の水準系列の中から，
+観測値との残差平方和 (残差の分散) が小さいもの16個を抽出した結果を示す．
+この程度のサンプリング数の中でもある程度似通った系列があることがわかるが，
+同時にサンプリングにもとづく方法は非常に効率が悪いこともわかる．
+
+#+begin_export latex
+\begin{figure}[htbp]
+  \sidecaption{事前分布からサンプリングされた変数
+    $\mu_{t}$ (level) のうち，
+    観測データ $Y_{t}$ と似たものを抽出した結果．
+    \label{fig:6}}
+  \centering
+  \myGraph*{}
+\end{figure}
+#+end_export
+
+#+attr_latex: :options linenos
+#+begin_src R
+## モデルの設定 (以降で使うモデル)
+Qs <- fitModel$model$Q[2,2,1]
+model <-
+  SSModel(formula = Y ~ # 目的変数
+              	    -1 + # 定数項を持たない
+               	    SSMtrend(degree = 2, # トレンド成分の定義
+               	             Q = list(0,Qs)), H = 0.1)
+## 事前分布からサンプリングした level から観測値 Y と相関の高いものを取り出す
+tmpa <- simulateSSM(model,
+                    nsim = 30000,
+                    conditional = FALSE)
+tmpb <- rbind(
+    tibble(t = 1:length(Y),
+           var = "level",
+           as_tibble(
+               tmpa[,1,rank(apply(tmpa[,1,],2,
+                                  function(x){var(x-Y)}))<17])) %>%
+    tidyr::pivot_longer(-c(t,var)),
+    tibble(t = 1:length(Y),
+           var = "signal",
+           name = "V17",
+           value=Y))
+## 図示
+p <- 
+    ggplot(data = tmpb, group = var,
+           mapping = aes(x = t,
+                         y = value,
+                         color = name)) +
+    geom_line(alpha = 0.5) +
+    facet_grid(var ~ ., scale = "free_y") +
+    theme(legend.position = "none") +
+    xlab(label = "time")
+print(p)
+#+end_src
+
+実際の推定は，
+Bayes の定理にもとづいて事後分布を計算し，
+そこからサンプリングを行うことになる．
+この結果を図\ref{fig:8}
+に示す．[fn:6]
+
+#+begin_export latex
+\begin{figure*}[htbp]
+  \sidecaption{状態空間モデルの推定．
+    \label{fig:8}}
+  \centering
+  \myGraph{事前分布からサンプリングされた状態変数}
+  \myGraph{事後分布からサンプリングされた状態変数}
+\end{figure*}
+#+end_export
+
+#+attr_latex: :options linenos
+#+begin_src R
+## モデルにもとづいて状態を生成 (状態系列の事前分布)
+prior <- simulateSSM(model,
+                     nsim = 16,
+                     conditional = FALSE)
+## 観測データで条件付けて状態を生成 (状態系列の事後分布)
+postr <- simulateSSM(model,
+                     nsim = 16,
+                     conditional = TRUE)
+## 図示
+for(s in c("prior","postr")){
+    tmpa <- eval(parse(text=s))
+    tmpb <- 
+        rbind(tibble(t = 1:length(Y),
+                     var = "level",
+                     as_tibble(tmpa[,1,])),
+              tibble(t = 1:length(Y),
+                     var = "slope",
+                     as_tibble(tmpa[,2,]))) %>%
+        tidyr::pivot_longer(-c(t,var)) 
+    p <- 
+        ggplot(data = tmpb, group = var,
+               mapping = aes(x = t,
+                             y = value,
+                             color = name)) +
+        geom_line(alpha = 0.5) +
+        facet_grid(var ~ ., scale = "free_y") +
+        theme(legend.position = "none") +
+        xlab(label = "time")
+    print(p)
+}
+#+end_src
+   
+** 周期成分のモデルについて
+
+周期成分の変動の分散は既知としてモデルの構築を行ったが，
+これも本来は推定すべきである．
+単に $Q_{\mathrm{cycle}}=NA$
+としても最適化してくれない．[fn:7]
+
+適当な範囲で $Q_{\mathrm{cycle}}$ の値を変えながら，
+解の尤度を検証した結果 $Q_{\mathrm{cycle}}=0.05$ としている．
+
+#+begin_export latex
+\begin{figure}[htbp]
+  \sidecaption{$Q_{\mathrm{cycle}}$ の検討について．
+    \label{fig:9}}
+  \centering
+  \myGraph*{}
+\end{figure}
+#+end_export
+
+#+attr_latex: :options linenos
+#+begin_src R :results output
   ## 周期成分の変動の分散の検討
   Qc <- 10^seq(0,-2,length=32)/2
-  ll <- double(length(Qc))
+  lL <- double(length(Qc))
   for(i in 1:length(Qc)) {
-      myModel <-
+      tmp <-
           SSModel(data = myData, 
                   formula = patients ~ 
                       -1 + 
@@ -353,11 +613,12 @@ KFAS package を用いて
                       SSMcycle(period = 7, 
                                Q = Qc[i]), # 変更
                   distribution = "poisson") 
-      fitModel <- fitSSM(myModel, inits = 0, method = "BFGS")
-      ll[i] <- logLik(fitModel$model)
+      lL[i] <- logLik(fitSSM(tmp,
+                             inits = 0,
+                             method = "BFGS")$model)
   }
   p <-
-      ggplot(data = data.frame(Q=Qc, logLik=ll),
+      ggplot(data = data.frame(Q=Qc, logLik=lL),
              mapping = aes(x = Q, y = logLik)) +
       geom_line() +
       scale_x_log10() +
@@ -365,7 +626,7 @@ KFAS package を用いて
          x = "Q_cycle",
          y = "log likelihood")
   print(p)
-  print(Qc[which.max(ll)])
+  print(Qc[which.max(lL)])
 #+end_src
 
 ** 他のデータについて
@@ -385,6 +646,9 @@ KFAS package を用いて
 #+begin_src R :exports none :tangle no
   dev.off()
 #+end_src
+
+
+* COMMENT ローカル変数
 
 * Footnotes
 
@@ -406,7 +670,13 @@ KFASでは季節成分の推定方法として
 
 [fn:5]補遺参照のこと．
 
-[fn:6]最適化の設定を適切にするか，
+[fn:6]事後分布の計算が容易に行えるような
+モデルを用いるところが重要となる．
+
+[fn:7]最適化の設定を適切にするか，
 母数の更新関数をおそらく設定する必要があるが，
 検証できていない．
 
+# Local Variables:
+# org-latex-listings: minted
+# End:
