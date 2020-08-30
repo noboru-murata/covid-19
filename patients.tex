@@ -1,4 +1,4 @@
-% Created 2020-08-29 Sat 21:31
+% Created 2020-08-30 Sun 15:42
 % Intended LaTeX compiler: pdflatex
 \documentclass[10pt,oneside,fleqn]{scrartcl}
 
@@ -19,7 +19,7 @@
 
 \maketitle
 \section{はじめに}
-\label{sec:orgfa8f515}
+\label{sec:org468efa1}
 
 陽性患者数は日々変動するが，
 検査機関の稼働状況により，その数は大きく変動する．
@@ -49,7 +49,7 @@ library(KFAS)   # 状態空間モデルの構成
 \end{minted}
 
 \section{データの視覚化}
-\label{sec:orga2a5b7c}
+\label{sec:org899ec5d}
 
 東京都が公開しているCOVID-19のデータは，
 陽性患者ごとの属性情報なので，
@@ -115,7 +115,7 @@ ggplotly() # plotly表示 (browser)
 \end{minted}
 
 \section{モデルの構成}
-\label{sec:orgf4fe9d3}
+\label{sec:org73d7d7c}
 
 時刻 \(t\) (年月日)の陽性患者数を \(X_{t}\) とし，
 \(X_{t}\) は母数 \(\lambda_{t}\) の Poisson 分布に従うとする．
@@ -201,7 +201,7 @@ stateName <- colnames(myModel$Z) # 状態変数の名称
 \end{minted}
 
 \section{推定}
-\label{sec:org420fffc}
+\label{sec:org2c065e1}
 
 モデルの母数推定(トレンド成分の分散)
 および状態推定(状態の smoothing / filtering)は
@@ -306,7 +306,7 @@ ggplotly() # plotly表示 (browser)
 \end{minted}
 
 \section{おわりに}
-\label{sec:orgc538cf5}
+\label{sec:orgca1e731}
 
 移動平均でも窓幅を適切に選べば増減の傾向を捉えることは可能であるが，
 状態空間モデルでは背後にある確率的な力学系を仮定した上で，
@@ -317,13 +317,14 @@ ggplotly() # plotly表示 (browser)
 と考えられる．
 
 \section{補遺}
-\label{sec:org30efe99}
+\label{sec:org39fb185}
 \subsection{状態空間モデルによる推定}
-\label{sec:org6f48e40}
+\label{sec:orga5768c4}
 
 状態空間モデルによる推定の仕組みを見るために，
-陽性患者数の対数値の状態空間モデルとして
-簡略化したもの考える．
+陽性患者数の対数値について
+簡略化した状態空間モデルを考えて
+説明する．
 
 まず，図\ref{fig:4} に陽性患者数の対数値 \(Y_{t}\) を示す．
 \begin{figure}[htbp]
@@ -347,27 +348,81 @@ p <-
 print(p)
 \end{minted}
 
-陽性患者数の対数値 \(Y_{t}\) の状態空間モデルとして，
-2次のトレンド成分のみからなるモデルを，
-観測は単純な加法雑音を考える．
+観測値 \(Y_{t}\) の状態空間モデルとして以下を考える．
+状態空間は2次のトレンド成分を考える．
+すなわち，
+勾配 (\(\nu\), slope) がランダムウォークで連続に変化し，
+水準 (\(\mu\), level) は単位時間あたり勾配分の増減を行う．\footnote{勾配を一定とし，
+水準が勾配と雑音の影響で変化するというモデルでも表すことができるが，
+この問題では勾配の変化を抽出したいので，
+勾配の方に確率変動を入れた形で記述し，
+可能な勾配系列をランダムウォーク 
+(連続時間なら Wiener 過程(Gauss 過程の一種)．
+微分はできないが連続な系列を網羅的に表す)
+でモデル化している．}
+観測値は水準に正規雑音が重畳されたものを考える．
+まとめると以下のようになる．
 \begin{align}
   Y_{t}
   &=
-  \mu_{t}+\epsilon_{t},&&\epsilon_{t}\sim\mathcal{N}(0,H_{t})\\
+  \mu_{t}+\epsilon_{t},&&\epsilon_{t}\sim\mathcal{N}(0,H)\\
   \mu_{t+1}
   &=\mu_{t}+\nu_{t},\\
   \nu_{t+1}
-  &=\nu_{t}+\zeta_{t},&&\zeta_{t}\sim\mathcal{N}(0,Q_{\mathrm{slope},t})
+  &=\nu_{t}+\zeta_{t},&&\zeta_{t}\sim\mathcal{N}(0,Q_{\mathrm{slope}})
 \end{align}
 
-以下では
-勾配成分 (slope) の雑音の分散としては，
-本文で推定された \(Q_{\mathrm{slope}}\) を用いるが，
-まず，このパラメタの違いによって
-どのような状態変数が出現するか確認する．
+このモデルの母数を
+\begin{equation}
+  \theta=(H,Q_{\mathrm{slope}})
+\end{equation}
+で表し，観測系列および状態系列をそれぞれ
+\begin{align}
+  Y&=\{Y_{t};\;t=1,\dotsc,T\}\\
+  Z&=\{(\mu_{t},\nu_{t});\;t=1,\dotsc,T\}
+\end{align}
+で表す．また，観測系列および状態系列の分布とその密度関数をそれぞれ
+\begin{align}
+  &P^{Y|Z}_{\theta},&&p^{Y|Z}(y|Z;\theta)&&\text{(条件付)}\\
+  &P^{Z}_{\theta},&&p^{Z}(z;\theta)
+\end{align}
+と書く．\footnote{このモデルでは母数 \(\theta\) は
+それぞれの分布の母数として分離して書くこともできるが，
+ここでは一般化して書いておく．}
+
+母数 \(\theta\) が未知の場合，
+その推定は観測系列から定義される尤度関数を最大化すればよい．
+すなわち，
+観測系列と状態系列の同時密度を状態系列について周辺すればよいので
+\begin{align}
+  \ell(\theta)
+  &=\ell(\theta;Y=y)\;\text{(観測系列を$y$とする)}\\
+  &=\int p^{Y|Z}(y|z;\theta)p^{Z}(z;\theta)dz\\
+  &=\Ex{p^{Y|Z}(y|Z;\theta)}[Z\sim P^{Z}_{\theta}]
+\end{align}
+となる．
+条件付密度 \(p^{Y|Z}(y|z;\theta)\) は
+状態系列 \(z\) の水準の項 \(\mu\) に
+加法的雑音が重畳して観測系列 \(y\) が出現する確率を表しているので，
+その差 \(\|\mu-y\|\) が小さいほど大きな値となり，
+水準(状態 \(z\) の一部)と \(y\) の類似度と捉えることができる．
+したがって平均で書いた式は
+母数 \(\theta\) を持つ状態系列の分布 (事前分布) から
+サンプリングされた状態系列と観測系列の類似度の平均と解釈される．
+直感的には
+観測系列 \(y\) と似た \(\mu\) の系列を多く出力するように
+母数 \(\theta\) を選べばよい．
+
+以下の実験では，
+勾配成分 (slope) の雑音の分散 \(Q_{\mathrm{slope}}\)
+(ランダムウォークの歩幅)としては，
+本文で推定された \(\hat{Q}_{\mathrm{slope}}\) を用い，
+観測雑音の分散は \(H=0.1\) に固定するが，
+その前に 母数 \(Q_{\mathrm{slope}}\) の違いによって
+どのような状態系列が出現するか確認しておく．
 図\ref{fig:5} は
-勾配成分の雑音の分散を
-\(\lambda\times Q_{\mathrm{slope}},\;\lambda=0.3,1,3\)
+雑音の分散 \(Q\) を
+\(\lambda\times \hat{Q}_{\mathrm{slope}},\;\lambda=0.3,1,3\)
 とした事前分布から，
 それぞれ
 16個の
@@ -376,16 +431,6 @@ print(p)
 および
 \(\nu_{t}\) (勾配; slope)
 をサンプリングした結果を示す．
-
-分散を大きくするほど，
-勾配のばらつきが大きくなり，
-その結果水準の増減幅も大きくなることがわかる．
-観測値 \(Y_{t}\) の範囲は \([0,6]\) 程度なので，
-それを記述する水準のばらつきも同程度になるように
-事前分布のパラメタが適切に選択される必要がある．
-以下では
-\(\lambda=1\)
-のモデルを用いる．
 
 \begin{figure*}[htbp]
   \sidecaption{事前分布のパラメタの違いによる
@@ -436,9 +481,30 @@ for(lambda in c(0.3,1,3)){
 }
 \end{minted}
 
-事後分布の計算は，
+分散を大きくするほど，
+勾配のばらつきが大きくなり，
+その結果水準の増減幅も大きくなることがわかる．
+観測値 \(Y_{t}\) の範囲は \([0,6]\) 程度なので，
+それを記述する水準系列も同程度の範囲を動くように
+事前分布のパラメタが適切に選択される必要がある．
+以下では
+\(\lambda=1\)
+のモデルを用いる．
+
+事後分布の密度関数は，
+\begin{align}
+  p(z|y)
+  &=\frac{p^{Y|Z}(y|z;\theta)p^{Z}(z;\theta)}{p^{Y}(y;\theta)}\\
+  &\propto p^{Y|Z}(y|z;\theta)p^{Z}(z;\theta)
+\end{align}
+となるので，
 直感的には事前分布に従う系列の中から
-観測値と似通った系列を選び出す過程と考えることができる．
+観測値と似通った系列に条件付密度で重み付けして
+選び出す操作と考えることができる．\footnote{愚直には，
+事前分布に従ってサンプリングされた状態系列から，
+条件付密度を使って棄却法で選び出せばよいが，
+相当効率は悪い．}
+
 図\ref{fig:6}
 では，
 事前分布からサンプリングされた多数 (30000個)
@@ -492,12 +558,13 @@ p <-
 print(p)
 \end{minted}
 
-実際の推定は，
-Bayes の定理にもとづいて事後分布を計算し，
-そこからサンプリングを行うことになる．
+実際には，
+上記のように Bayes の定理にもとづいて事後分布を計算し，
+そこから適切な方法で効率良くサンプリングを行っている．
 この結果を図\ref{fig:8}
 に示す．\footnote{事後分布の計算が容易に行えるような
-モデルを用いるところが重要となる．}
+モデルを用いるところが重要となる．
+モデル化が難しい場合はMonte-Carlo法などに頼ることになる．}
 
 \begin{figure*}[htbp]
   \sidecaption{状態空間モデルの推定．
@@ -541,7 +608,7 @@ for(s in c("prior","postr")){
 \end{minted}
 
 \subsection{周期成分のモデルについて}
-\label{sec:orgda1cc78}
+\label{sec:org24930eb}
 
 周期成分の変動の分散は既知としてモデルの構築を行ったが，
 これも本来は推定すべきである．
@@ -591,7 +658,7 @@ print(Qc[which.max(lL)])
 \end{minted}
 
 \subsection{他のデータについて}
-\label{sec:orgf110d25}
+\label{sec:orgc632519}
 
 全国のデータは厚生労働省から得られる．
 こちらは単純な集計データなので，

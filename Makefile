@@ -1,9 +1,9 @@
 .SUFFIXES: .org .tex .pdf .R
 MSG = "debug"
-SRC = $(shell ls *.org)
-TEX = $(SRC:%.org=%.tex)
+ORG = $(shell ls [^R]*.org)
+TEX = $(ORG:%.org=%.tex)
 PDF = $(TEX:%.tex=%.pdf)
-RCODE = $(SRC:%.org=%.R)
+RCODE = $(ORG:%.org=%.R)
 
 all:	$(PDF) $(RCODE)
 
@@ -16,9 +16,11 @@ all:	$(PDF) $(RCODE)
 .tex.pdf:
 	latexmk $<
 
+$(TEX): $(ORG)
+
 $(PDF): $(TEX)
 
-$(RCODE): $(SRC)
+$(RCODE): $(ORG)
 
 push:
 	git add -u
