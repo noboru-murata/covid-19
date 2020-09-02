@@ -17,6 +17,7 @@
 #+PROPERTY: header-args:R :session *R* :cache yes 
 #+PROPERTY: header-args:R+ :exports both :results none
 #+PROPERTY: header-args:R+ :tangle yes
+#+PROPERTY: header-args:R+ :eval yes
 
 # C-c C-v t (tangling .R)
 # C-c C-e l l (exporting .tex)
@@ -477,7 +478,7 @@ $\nu_{t}$ (勾配; slope)
 #+attr_latex: :options linenos
 #+begin_src R
 ## いくつかのモデルで状態の事前分布を確認
-Qs <- fitModel$model$Q[2,2,1] # 推定されたQslopeを利用
+Qs <- fit$model$Q[2,2,1] # 推定されたQslopeを利用
 tmpc <- tibble(t = 1,
                var = rep(c("level","slope"),each = 2),
                name = "V1",
@@ -559,7 +560,7 @@ $\lambda=1$
 #+attr_latex: :options linenos
 #+begin_src R
 ## モデルの設定 (以降で使うモデル)
-Qs <- fitModel$model$Q[2,2,1]
+Qs <- fit$model$Q[2,2,1]
 model <-
   SSModel(formula = Y ~ # 目的変数
               	    -1 + # 定数項を持たない

@@ -147,7 +147,7 @@ p <-
 print(p)
 
 ## いくつかのモデルで状態の事前分布を確認
-Qs <- fitModel$model$Q[2,2,1] # 推定されたQslopeを利用
+Qs <- fit$model$Q[2,2,1] # 推定されたQslopeを利用
 tmpc <- tibble(t = 1,
                var = rep(c("level","slope"),each = 2),
                name = "V1",
@@ -184,7 +184,7 @@ for(lambda in c(0.3,1,3)){
 }
 
 ## モデルの設定 (以降で使うモデル)
-Qs <- fitModel$model$Q[2,2,1]
+Qs <- fit$model$Q[2,2,1]
 model <-
   SSModel(formula = Y ~ # 目的変数
               	    -1 + # 定数項を持たない

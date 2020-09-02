@@ -1,4 +1,4 @@
-% Created 2020-08-30 Sun 15:42
+% Created 2020-09-02 Wed 21:49
 % Intended LaTeX compiler: pdflatex
 \documentclass[10pt,oneside,fleqn]{scrartcl}
 
@@ -19,7 +19,7 @@
 
 \maketitle
 \section{はじめに}
-\label{sec:org468efa1}
+\label{sec:orgf5650f8}
 
 陽性患者数は日々変動するが，
 検査機関の稼働状況により，その数は大きく変動する．
@@ -49,7 +49,7 @@ library(KFAS)   # 状態空間モデルの構成
 \end{minted}
 
 \section{データの視覚化}
-\label{sec:org899ec5d}
+\label{sec:org0c9b3c5}
 
 東京都が公開しているCOVID-19のデータは，
 陽性患者ごとの属性情報なので，
@@ -115,7 +115,7 @@ ggplotly() # plotly表示 (browser)
 \end{minted}
 
 \section{モデルの構成}
-\label{sec:org73d7d7c}
+\label{sec:org4e31b95}
 
 時刻 \(t\) (年月日)の陽性患者数を \(X_{t}\) とし，
 \(X_{t}\) は母数 \(\lambda_{t}\) の Poisson 分布に従うとする．
@@ -201,7 +201,7 @@ stateName <- colnames(myModel$Z) # 状態変数の名称
 \end{minted}
 
 \section{推定}
-\label{sec:org2c065e1}
+\label{sec:org9f6ae27}
 
 モデルの母数推定(トレンド成分の分散)
 および状態推定(状態の smoothing / filtering)は
@@ -306,7 +306,7 @@ ggplotly() # plotly表示 (browser)
 \end{minted}
 
 \section{おわりに}
-\label{sec:orgca1e731}
+\label{sec:org15ef121}
 
 移動平均でも窓幅を適切に選べば増減の傾向を捉えることは可能であるが，
 状態空間モデルでは背後にある確率的な力学系を仮定した上で，
@@ -317,9 +317,9 @@ ggplotly() # plotly表示 (browser)
 と考えられる．
 
 \section{補遺}
-\label{sec:org39fb185}
+\label{sec:org39f2f08}
 \subsection{状態空間モデルによる推定}
-\label{sec:orga5768c4}
+\label{sec:org32b4223}
 
 状態空間モデルによる推定の仕組みを見るために，
 陽性患者数の対数値について
@@ -444,7 +444,7 @@ print(p)
 
 \begin{minted}[,linenos]{r}
 ## いくつかのモデルで状態の事前分布を確認
-Qs <- fitModel$model$Q[2,2,1] # 推定されたQslopeを利用
+Qs <- fit$model$Q[2,2,1] # 推定されたQslopeを利用
 tmpc <- tibble(t = 1,
 	       var = rep(c("level","slope"),each = 2),
 	       name = "V1",
@@ -524,7 +524,7 @@ for(lambda in c(0.3,1,3)){
 
 \begin{minted}[,linenos]{r}
 ## モデルの設定 (以降で使うモデル)
-Qs <- fitModel$model$Q[2,2,1]
+Qs <- fit$model$Q[2,2,1]
 model <-
   SSModel(formula = Y ~ # 目的変数
 		    -1 + # 定数項を持たない
@@ -608,7 +608,7 @@ for(s in c("prior","postr")){
 \end{minted}
 
 \subsection{周期成分のモデルについて}
-\label{sec:org24930eb}
+\label{sec:org96c8276}
 
 周期成分の変動の分散は既知としてモデルの構築を行ったが，
 これも本来は推定すべきである．
@@ -658,7 +658,7 @@ print(Qc[which.max(lL)])
 \end{minted}
 
 \subsection{他のデータについて}
-\label{sec:orgc632519}
+\label{sec:org207ce5c}
 
 全国のデータは厚生労働省から得られる．
 こちらは単純な集計データなので，
