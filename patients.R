@@ -22,14 +22,15 @@ p <-
   ggplot(data = myData,
 	 mapping = aes(x = date,
 		       y = patients)) +
-  geom_point() + 
+  geom_col(colour = "skyblue",
+	   fill = "slateblue", alpha=0.2) + 
   geom_line(data = myData %>% # 7日移動平均
 	      dplyr::mutate(patients =
 			      zoo::rollmean(x = patients,
 					    k = 7, 
 					    align = "right",
 					    fill = NA)),
-	    color = "green", alpha = 0.5, size = 1,
+	    colour = "green", alpha = 0.7, size = 1,
 	    na.rm = TRUE) +
   geom_line(data = myData %>% # 14日移動平均
 	      dplyr::mutate(patients =
@@ -37,7 +38,7 @@ p <-
 					    k = 14, 
 					    align = "right",
 					    fill = NA)),
-	    color = "orange", alpha = 0.5, size = 1,
+	    colour = "orange", alpha = 0.7, size = 1,
 	    na.rm = TRUE) +
   scale_x_date(labels = date_format("%y-%m-%d"), # 年月日表示
 	       breaks = date_breaks("1 week")) + # 週毎
@@ -94,7 +95,7 @@ p <-
   geom_line() +
   geom_ribbon(mapping = aes(ymin = value-zq*sd,
 			    ymax = value+zq*sd),
-	      fill = "blue", alpha = 0.2) +
+	      fill = "royalblue", alpha = 0.2) +
   facet_grid(name ~ ., scale = "free_y") + 
   scale_x_date(labels = date_format("%y-%m-%d"), 
 	       breaks = date_breaks("1 week")) + 
@@ -117,11 +118,12 @@ p <-
 			 upr = exp(tmpa + zq*tmpb)),
 	 mapping = aes(x = date,
 		       y = patients)) +
-  geom_point() +
+  geom_col(colour = "skyblue",
+	   fill = "slateblue", alpha=0.2) + 
   geom_line(mapping = aes(y = mean),
-	    color = "red", alpha = 0.5, size = 1) +
+	    colour = "orchid", alpha = 0.8, size = 1) +
   geom_ribbon(mapping = aes(ymin = lwr, ymax = upr),
-	      fill = "red", alpha = 0.2) +
+	      fill = "coral", alpha = 0.2) +
   scale_x_date(labels = date_format("%y-%m-%d"), 
 	       breaks = date_breaks("1 week")) + 
   theme(axis.text.x = element_text(angle = 90, 
@@ -142,7 +144,7 @@ p <-
     ggplot(data = tmp, 
            mapping = aes(x = t,
                          y = Y)) +
-    geom_line(color = "green", alpha = 0.8) +
+    geom_line(colour = "green", alpha = 0.8) +
     xlab(label = "time")
 print(p)
 
@@ -152,7 +154,7 @@ tmpc <- tibble(t = 1,
                var = rep(c("level","slope"),each = 2),
                name = "V1",
                value = c(150,-150,1.5,-1.5))
-for(lambda in c(0.3,1,3)){
+for(lambda in c(0.2,1,5)){
     model <- # モデルを作成
         SSModel(formula = Y ~ # 目的変数
               	    -1 + # 定数項を持たない
@@ -174,7 +176,7 @@ for(lambda in c(0.3,1,3)){
         ggplot(data = tmpb, group = var,
                mapping = aes(x = t,
                              y = value,
-                             color = name)) +
+                             colour = name)) +
         geom_blank(data = tmpc) +
         geom_line(alpha = 0.5) +
         facet_grid(var ~ ., scale = "free_y") +
@@ -183,39 +185,44 @@ for(lambda in c(0.3,1,3)){
     print(p)
 }
 
-## モデルの設定 (以降で使うモデル)
 Qs <- fit$model$Q[2,2,1]
-model <-
-  SSModel(formula = Y ~ # 目的変数
-              	    -1 + # 定数項を持たない
-               	    SSMtrend(degree = 2, # トレンド成分の定義
-               	             Q = list(0,Qs)), H = 0.1)
-## 事前分布からサンプリングした level から観測値 Y と相関の高いものを取り出す
-tmpa <- simulateSSM(model,
-                    nsim = 30000,
-                    conditional = FALSE)
-tmpb <- rbind(
+for(lambda in c(0.2,1,5)){
+  model <-
+    SSModel(formula = Y ~ # 目的変数
+	      -1 + # 定数項を持たない
+	      SSMtrend(degree = 2, # トレンド成分の定義
+		       Q = list(0,lambda*Qs)), H = 0.1)
+  ## 事前分布からサンプリングした level から
+  ## 観測値 Y と相関の高いものを取り出す
+  tmpa <- simulateSSM(model,
+		      nsim = 50000,
+		      conditional = FALSE)
+  tmpb <- rbind(
     tibble(t = 1:length(Y),
-           var = "level",
-           as_tibble(
-               tmpa[,1,rank(apply(tmpa[,1,],2,
-                                  function(x){var(x-Y)}))<17])) %>%
+	   var = "level",
+	   as_tibble(
+	     tmpa[,1,
+		  rank(
+		    apply(tmpa[,1,],2,
+			  function(x){var(x-Y)}))<17])) %>%
     tidyr::pivot_longer(-c(t,var)),
     tibble(t = 1:length(Y),
-           var = "signal",
-           name = "V17",
-           value=Y))
-## 図示
-p <- 
+	   var = "signal",
+	   name = "V17",
+	   value=Y))
+  ## 図示
+  p <- 
     ggplot(data = tmpb, group = var,
-           mapping = aes(x = t,
-                         y = value,
-                         color = name)) +
+	   mapping = aes(x = t,
+			 y = value,
+			 colour = name)) +
     geom_line(alpha = 0.5) +
     facet_grid(var ~ ., scale = "free_y") +
+    ylim(-1,12) +
     theme(legend.position = "none") +
     xlab(label = "time")
-print(p)
+  print(p)
+}
 
 ## モデルにもとづいて状態を生成 (状態系列の事前分布)
 prior <- simulateSSM(model,
@@ -240,7 +247,7 @@ for(s in c("prior","postr")){
         ggplot(data = tmpb, group = var,
                mapping = aes(x = t,
                              y = value,
-                             color = name)) +
+                             colour = name)) +
         geom_line(alpha = 0.5) +
         facet_grid(var ~ ., scale = "free_y") +
         theme(legend.position = "none") +

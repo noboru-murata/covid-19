@@ -1,4 +1,4 @@
-% Created 2020-09-02 Wed 21:49
+% Created 2020-09-15 Tue 14:19
 % Intended LaTeX compiler: pdflatex
 \documentclass[10pt,oneside,fleqn]{scrartcl}
 
@@ -19,7 +19,7 @@
 
 \maketitle
 \section{はじめに}
-\label{sec:orgf5650f8}
+\label{sec:org47c7731}
 
 陽性患者数は日々変動するが，
 検査機関の稼働状況により，その数は大きく変動する．
@@ -49,7 +49,7 @@ library(KFAS)   # 状態空間モデルの構成
 \end{minted}
 
 \section{データの視覚化}
-\label{sec:org0c9b3c5}
+\label{sec:org99cf7b3}
 
 東京都が公開しているCOVID-19のデータは，
 陽性患者ごとの属性情報なので，
@@ -86,14 +86,15 @@ p <-
   ggplot(data = myData,
 	 mapping = aes(x = date,
 		       y = patients)) +
-  geom_point() + 
+  geom_col(colour = "skyblue",
+	   fill = "slateblue", alpha=0.2) + 
   geom_line(data = myData %>% # 7日移動平均
 	      dplyr::mutate(patients =
 			      zoo::rollmean(x = patients,
 					    k = 7, 
 					    align = "right",
 					    fill = NA)),
-	    color = "green", alpha = 0.5, size = 1,
+	    colour = "green", alpha = 0.7, size = 1,
 	    na.rm = TRUE) +
   geom_line(data = myData %>% # 14日移動平均
 	      dplyr::mutate(patients =
@@ -101,7 +102,7 @@ p <-
 					    k = 14, 
 					    align = "right",
 					    fill = NA)),
-	    color = "orange", alpha = 0.5, size = 1,
+	    colour = "orange", alpha = 0.7, size = 1,
 	    na.rm = TRUE) +
   scale_x_date(labels = date_format("%y-%m-%d"), # 年月日表示
 	       breaks = date_breaks("1 week")) + # 週毎
@@ -115,7 +116,7 @@ ggplotly() # plotly表示 (browser)
 \end{minted}
 
 \section{モデルの構成}
-\label{sec:org4e31b95}
+\label{sec:org6e41ef1}
 
 時刻 \(t\) (年月日)の陽性患者数を \(X_{t}\) とし，
 \(X_{t}\) は母数 \(\lambda_{t}\) の Poisson 分布に従うとする．
@@ -201,7 +202,7 @@ stateName <- colnames(myModel$Z) # 状態変数の名称
 \end{minted}
 
 \section{推定}
-\label{sec:org9f6ae27}
+\label{sec:orgdb1a5e1}
 
 モデルの母数推定(トレンド成分の分散)
 および状態推定(状態の smoothing / filtering)は
@@ -253,7 +254,7 @@ p <-
   geom_line() +
   geom_ribbon(mapping = aes(ymin = value-zq*sd,
 			    ymax = value+zq*sd),
-	      fill = "blue", alpha = 0.2) +
+	      fill = "royalblue", alpha = 0.2) +
   facet_grid(name ~ ., scale = "free_y") + 
   scale_x_date(labels = date_format("%y-%m-%d"), 
 	       breaks = date_breaks("1 week")) + 
@@ -289,11 +290,12 @@ p <-
 			 upr = exp(tmpa + zq*tmpb)),
 	 mapping = aes(x = date,
 		       y = patients)) +
-  geom_point() +
+  geom_col(colour = "skyblue",
+	   fill = "slateblue", alpha=0.2) + 
   geom_line(mapping = aes(y = mean),
-	    color = "red", alpha = 0.5, size = 1) +
+	    colour = "orchid", alpha = 0.8, size = 1) +
   geom_ribbon(mapping = aes(ymin = lwr, ymax = upr),
-	      fill = "red", alpha = 0.2) +
+	      fill = "coral", alpha = 0.2) +
   scale_x_date(labels = date_format("%y-%m-%d"), 
 	       breaks = date_breaks("1 week")) + 
   theme(axis.text.x = element_text(angle = 90, 
@@ -306,7 +308,7 @@ ggplotly() # plotly表示 (browser)
 \end{minted}
 
 \section{おわりに}
-\label{sec:org15ef121}
+\label{sec:org1bd3dbb}
 
 移動平均でも窓幅を適切に選べば増減の傾向を捉えることは可能であるが，
 状態空間モデルでは背後にある確率的な力学系を仮定した上で，
@@ -317,9 +319,9 @@ ggplotly() # plotly表示 (browser)
 と考えられる．
 
 \section{補遺}
-\label{sec:org39f2f08}
+\label{sec:org25dca2b}
 \subsection{状態空間モデルによる推定}
-\label{sec:org32b4223}
+\label{sec:org5fc7918}
 
 状態空間モデルによる推定の仕組みを見るために，
 陽性患者数の対数値について
@@ -343,7 +345,7 @@ p <-
     ggplot(data = tmp, 
 	   mapping = aes(x = t,
 			 y = Y)) +
-    geom_line(color = "green", alpha = 0.8) +
+    geom_line(colour = "green", alpha = 0.8) +
     xlab(label = "time")
 print(p)
 \end{minted}
@@ -437,9 +439,9 @@ print(p)
     状態変数の挙動．
     \label{fig:5}}
   \centering
-  \myGraph[.3]{$\lambda=0.3$}
+  \myGraph[.3]{$\lambda=0.2$}
   \myGraph[.3]{$\lambda=1$}
-  \myGraph[.3]{$\lambda=3$}
+  \myGraph[.3]{$\lambda=5$}
 \end{figure*}
 
 \begin{minted}[,linenos]{r}
@@ -449,7 +451,7 @@ tmpc <- tibble(t = 1,
 	       var = rep(c("level","slope"),each = 2),
 	       name = "V1",
 	       value = c(150,-150,1.5,-1.5))
-for(lambda in c(0.3,1,3)){
+for(lambda in c(0.2,1,5)){
     model <- # モデルを作成
 	SSModel(formula = Y ~ # 目的変数
 		    -1 + # 定数項を持たない
@@ -471,7 +473,7 @@ for(lambda in c(0.3,1,3)){
 	ggplot(data = tmpb, group = var,
 	       mapping = aes(x = t,
 			     y = value,
-			     color = name)) +
+			     colour = name)) +
 	geom_blank(data = tmpc) +
 	geom_line(alpha = 0.5) +
 	facet_grid(var ~ ., scale = "free_y") +
@@ -507,64 +509,84 @@ for(lambda in c(0.3,1,3)){
 
 図\ref{fig:6}
 では，
-事前分布からサンプリングされた多数 (30000個)
+事前分布からサンプリングされた多数 (50000個)
 の水準系列の中から，
 観測値との残差平方和 (残差の分散) が小さいもの16個を抽出した結果を示す．
+勾配の分散が小さい (\(\lambda=0.2)\) と滑らかな系列が生成されるが，
+水準の変動に十分追従できていないことがわかる．
+一方，
+勾配の分散が大きい (\(\lambda=5)\) と
+水準に追従することはできているが，
+系列としては変動の激しいものとなっている．
+したがって
+水準への追従とある程度滑らかな系列を得るには，
+適切な大きさの分散を選ぶ必要があることがわかる．
+なお，
 この程度のサンプリング数の中でもある程度似通った系列があることがわかるが，
 同時にサンプリングにもとづく方法は非常に効率が悪いこともわかる．
 
-\begin{figure}[htbp]
+\begin{figure*}[htbp]
   \sidecaption{事前分布からサンプリングされた変数
     $\mu_{t}$ (level) のうち，
     観測データ $Y_{t}$ と似たものを抽出した結果．
     \label{fig:6}}
   \centering
-  \myGraph*{}
-\end{figure}
+  \myGraph[.3]{$\lambda=0.2$}
+  \myGraph[.3]{$\lambda=1$}
+  \myGraph[.3]{$\lambda=5$}
+\end{figure*}
 
 \begin{minted}[,linenos]{r}
-## モデルの設定 (以降で使うモデル)
 Qs <- fit$model$Q[2,2,1]
-model <-
-  SSModel(formula = Y ~ # 目的変数
-		    -1 + # 定数項を持たない
-		    SSMtrend(degree = 2, # トレンド成分の定義
-			     Q = list(0,Qs)), H = 0.1)
-## 事前分布からサンプリングした level から観測値 Y と相関の高いものを取り出す
-tmpa <- simulateSSM(model,
-		    nsim = 30000,
-		    conditional = FALSE)
-tmpb <- rbind(
+for(lambda in c(0.2,1,5)){
+  model <-
+    SSModel(formula = Y ~ # 目的変数
+	      -1 + # 定数項を持たない
+	      SSMtrend(degree = 2, # トレンド成分の定義
+		       Q = list(0,lambda*Qs)), H = 0.1)
+  ## 事前分布からサンプリングした level から
+  ## 観測値 Y と相関の高いものを取り出す
+  tmpa <- simulateSSM(model,
+		      nsim = 50000,
+		      conditional = FALSE)
+  tmpb <- rbind(
     tibble(t = 1:length(Y),
 	   var = "level",
 	   as_tibble(
-	       tmpa[,1,rank(apply(tmpa[,1,],2,
-				  function(x){var(x-Y)}))<17])) %>%
+	     tmpa[,1,
+		  rank(
+		    apply(tmpa[,1,],2,
+			  function(x){var(x-Y)}))<17])) %>%
     tidyr::pivot_longer(-c(t,var)),
     tibble(t = 1:length(Y),
 	   var = "signal",
 	   name = "V17",
 	   value=Y))
-## 図示
-p <- 
+  ## 図示
+  p <- 
     ggplot(data = tmpb, group = var,
 	   mapping = aes(x = t,
 			 y = value,
-			 color = name)) +
+			 colour = name)) +
     geom_line(alpha = 0.5) +
     facet_grid(var ~ ., scale = "free_y") +
+    ylim(-1,12) +
     theme(legend.position = "none") +
     xlab(label = "time")
-print(p)
+  print(p)
+}
 \end{minted}
 
 実際には，
 上記のように Bayes の定理にもとづいて事後分布を計算し，
-そこから適切な方法で効率良くサンプリングを行っている．
-この結果を図\ref{fig:8}
-に示す．\footnote{事後分布の計算が容易に行えるような
+そこから適切な方法で効率良くサンプリングを行っている．\footnote{事後分布の計算が容易に行えるような
 モデルを用いるところが重要となる．
 モデル化が難しい場合はMonte-Carlo法などに頼ることになる．}
+事前分布および
+事後分布から
+それぞれサンプリングされた状態変数
+の例を図\ref{fig:8}
+に示す．
 
 \begin{figure*}[htbp]
   \sidecaption{状態空間モデルの推定．
@@ -598,7 +620,7 @@ for(s in c("prior","postr")){
 	ggplot(data = tmpb, group = var,
 	       mapping = aes(x = t,
 			     y = value,
-			     color = name)) +
+			     colour = name)) +
 	geom_line(alpha = 0.5) +
 	facet_grid(var ~ ., scale = "free_y") +
 	theme(legend.position = "none") +
@@ -608,7 +630,7 @@ for(s in c("prior","postr")){
 \end{minted}
 
 \subsection{周期成分のモデルについて}
-\label{sec:org96c8276}
+\label{sec:org5599df3}
 
 周期成分の変動の分散は既知としてモデルの構築を行ったが，
 これも本来は推定すべきである．
@@ -658,7 +680,7 @@ print(Qc[which.max(lL)])
 \end{minted}
 
 \subsection{他のデータについて}
-\label{sec:org207ce5c}
+\label{sec:org4b5bcf0}
 
 全国のデータは厚生労働省から得られる．
 こちらは単純な集計データなので，
