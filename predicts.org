@@ -1,0 +1,703 @@
+#+TITLE: 陽性患者数の予測
+#+SUBTITLE: ARIMAモデルと局所線形構造モデル
+#+AUTHOR: N. Murata 
+#+SUBJECT: メモ
+#+KEYWORD: 感染症，時系列予測
+#+LANGUAGE: japanese
+#+LaTeX_CLASS: scrartcl
+#+LaTeX_CLASS_OPTIONS: [10pt,oneside,fleqn]
+#+LATEX_HEADER: \usepackage[list=minted]{myhandout}
+#+STARTUP: overview
+#+STARTUP: hidestars
+#+OPTIONS: date:t H:4 num:t toc:nil \n:nil
+#+OPTIONS: @:t ::t |:t ^:t -:t f:t *:t TeX:t LaTeX:t 
+#+OPTIONS: skip:nil d:nil todo:t pri:nil tags:not-in-toc
+#+LINK_UP:
+#+LINK_HOME:
+#+PROPERTY: header-args:R :session *R* :cache yes 
+#+PROPERTY: header-args:R+ :exports both :results output
+#+PROPERTY: header-args:R+ :tangle yes
+#+PROPERTY: header-args:R+ :eval yes
+
+# C-c C-v t (tangling .R)
+# C-c C-e l l (exporting .tex)
+# C-c C-e l p (exporting .pdf)
+
+# tangle で書き出した際のヘッダ
+#+begin_src R :eval no :exports none
+  ### 基本的な時系列モデルによる予測
+  ### 厚生労働省のCOVID-19の感染者数データを用いた例
+#+end_src
+# latex 用の図の作成
+#+begin_src R :exports none :tangle no
+  quartz(file = "figs/predicts_plot.pdf", type ="pdf",
+	 width = 8, height = 6)
+#+end_src
+
+* はじめに
+
+本稿では，
+時系列の基本的なモデルを用いて
+今後の患者数の予測を試みる．
+
+図示やモデル化に際しては以下の package を用いる．
+
+#+attr_latex: :options linenos
+#+begin_src R
+    ## パッケージの読み込み
+  library(forecast)
+  library(tidyverse)
+  library(scales) # 年月日表示
+  library(plotly) 
+  library(zoo)    # 時系列表示
+  library(ggfortify)
+#+end_src
+
+* データの取得
+
+以下では
+厚生労働省が公開している
+COVID-19の全国の感染者数データを利用する．[fn:1]
+
+#+attr_latex: :options linenos,breaklines,breakanywhere
+#+begin_src R
+  ## データの取得と整理 
+  patients <-
+      read.csv("https://www.mhlw.go.jp/content/pcr_positive_daily.csv") %>%
+      dplyr::rename(date=1, patients=2) %>% 
+      dplyr::mutate(date=as.Date(date))
+  ## 時系列データ(zooクラス)への変更
+  patients <- with(patients,
+		     zoo(x=patients, order.by=date))
+#+end_src
+
+図\ref{fig:1} は
+全国の陽性患者数の推移を図示したものである．
+左図は横軸に日付を，縦軸に観測された患者数を表示したものである．
+SIRなどの感染症の基本的なモデルによれば，
+感染が拡大しはじめる際の人数の増加は指数関数的であるので，
+右図では縦軸を患者数の常用対数として表示している．
+週日・休日での検査数に波はあるが，
+9月以降はほほ単調に増加していることがわかる．
+
+#+begin_export latex
+\begin{figure*}[htbp]
+  \sidecaption{全国の陽性患者数の推移．
+    \label{fig:1}}
+  \centering
+  \GraphFile{figs/predicts_plot}
+  \myGraph[.45]{日毎の患者数の変遷}
+  \myGraph[.45]{患者数の対数表示}
+\end{figure*}
+#+end_export
+
+# log(0) で warning が出るため，出力を抑制
+#+attr_latex: :options linenos
+#+begin_src R :results none
+  ## データの視覚化
+  p <-
+      ggplot(data = fortify(patients, melt = TRUE),
+	     mapping = aes(x = Index,
+			   y = Value)) +
+      scale_x_date(labels = date_format("%y-%m-%d"), # 年月日表示
+		   breaks = date_breaks("1 week")) + # 週毎
+      theme(axis.text.x = element_text(angle = 90, 
+				       vjust = 0.5, hjust=1)) +
+      labs(title = "COVID-19 patients in Japan",
+	   x = "date",
+	   y = "number of patients")
+  ## 棒グラフ
+  print(p + geom_col(fill="skyblue")) # グラフ出力
+  ggplotly() # plotly表示 (browser)
+  ## 折れ線グラフ+常用対数表示
+  print(p + geom_line(colour="skyblue") + scale_y_log10())
+  ggplotly()
+#+end_src
+
+* 基礎分析
+
+次節以降で確認するモデルの精度を確認するために，
+推定と予測のために系列を分けて考える．[fn:2]
+9月中旬から11月のデータをモデルの推定に用い，
+12月以降のデータで予測の精度を検証することとする．
+
+#+attr_latex: :options linenos
+#+begin_src R
+  ## 9月以降の第3波を対象とする
+  train <- window(patients,
+		  start="2020-09-15",
+		  end="2020-11-30")
+  test <- window(patients,
+		 start="2020-12-01")
+#+end_src
+
+まず，
+9-11月のデータを用いて時系列の基礎的な性質を確認する．
+
+データは明らかに定常ではないので，
+まず階差系列の性質を確認する．
+図\ref{fig:2} に
+階差系列の推移，および自己相関と偏自己相関を示す．
+系列の分散は時間とともに増大しており，
+また相関関係から7日毎の関係が強いことがわかる．
+これは検査機関の稼働状況の影響だと考えられる．
+
+#+begin_export latex
+\begin{figure*}[htbp]
+  \sidecaption{階差系列の基礎的な性質．
+    \label{fig:2}}
+  \centering
+  \myGraph[.3]{階差系列}
+  \myGraph[.3]{自己相関}
+  \myGraph[.3]{偏自己相関}
+\end{figure*}
+#+end_export
+
+#+attr_latex: :options linenos
+#+begin_src R
+  ## 階差系列の性質
+  autoplot(diff(train)) +
+    labs(x = "date",
+	 y = "D(patients)")
+  autoplot(acf(diff(train), plot = FALSE), # 自己相関
+	   conf.int.fill = "royalblue",
+	   conf.int.alpha =0.2,
+	   conf.int.value = 0.7,
+	   conf.int.type = "ma") +
+    labs(title = "D(patients)")
+  autoplot(pacf(diff(train), plot = FALSE), # 偏自己相関
+	   conf.int.fill = "royalblue",
+	   conf.int.alpha =0.2,
+	   conf.int.value = 0.7) +
+    labs(title = "D(patients)",
+	 y = "PACF")
+#+end_src
+
+SIRのような感染症のモデルの解析から，
+感染者数は指数型の増加を示すことが知られているので，
+次に感染者数の対数を取ったものの階差系列の性質を調べる．
+この結果を図\ref{fig:3} に示す．
+系列の推移より，分散の変動が定常化されていることがわかる．
+自己相関からは7日毎の関係が同様に確認される．
+
+#+begin_export latex
+\begin{figure*}[htbp]
+  \sidecaption{対数変換後の階差系列の性質．
+    \label{fig:3}}
+  \centering
+  \myGraph[.3]{階差系列}
+  \myGraph[.3]{自己相関}
+  \myGraph[.3]{偏自己相関}
+\end{figure*}
+#+end_export
+
+#+attr_latex: :options linenos
+#+begin_src R
+  ## 対数変換を確認する
+  ltrain <- log(train)
+  autoplot(diff(ltrain)) +
+      labs(x = "date",
+	   y = "D(log(patients))")
+  autoplot(acf(diff(ltrain), plot = FALSE), # 自己相関
+	   conf.int.fill = "royalblue",
+	   conf.int.alpha =0.2,
+	   conf.int.value = 0.7,
+	   conf.int.type = "ma") +
+      labs(title = "D(log(patients))")
+  autoplot(pacf(diff(ltrain), plot = FALSE), # 偏自己相関
+	   conf.int.fill = "royalblue",
+	   conf.int.alpha =0.2,
+	   conf.int.value = 0.7) +
+      labs(title = "D(log(patients))",
+	   y = "PACF")
+#+end_src
+
+また，この階差系列の基本統計量(平均と中央値)を見ると，
+若干正に偏っており，
+元の系列が増大する傾向があることが確認される．
+
+#+attr_latex: :options linenos
+#+begin_src R
+  ## 基本統計量の確認
+  summary(as.numeric(diff(ltrain)))
+#+end_src
+
+次に7日毎の階差を取り，
+7日毎の相関の性質がどのように変化するか確認する．
+これを図\ref{fig:4} に示す．
+相関関係の正負が逆転し，
+強い相関が残ることから，
+単純な周期成分ではないことが示唆される．[fn:3]
+
+#+begin_export latex
+\begin{figure*}[htbp]
+  \sidecaption{1日および7日の階差を取った系列の性質．
+    \label{fig:4}}
+  \centering
+  \myGraph[.3]{階差系列}
+  \myGraph[.3]{自己相関}
+  \myGraph[.3]{偏自己相関}
+\end{figure*}
+#+end_export
+
+#+attr_latex: :options linenos
+#+begin_src R
+  ## 7日の周期性を確認する
+  autoplot(diff(diff(ltrain), lag=7)) +
+      labs(x = "date",
+	   y = "D7*D(log(patients))")
+  autoplot(acf(diff(diff(ltrain), lag=7), plot = FALSE), # 自己相関
+	   conf.int.fill = "royalblue",
+	   conf.int.alpha =0.2,
+	   conf.int.value = 0.7,
+	   conf.int.type = "ma") +
+      labs(title = "D7*D(log(patients))")
+  autoplot(pacf(diff(diff(ltrain), lag=7), plot = FALSE), # 偏自己相関
+	   conf.int.fill = "royalblue",
+	   conf.int.alpha =0.2,
+	   conf.int.value = 0.7) +
+      labs(title = "D7*D(log(patients))",
+	   y = "PACF")
+#+end_src
+
+* ARIMAモデル
+
+まずARIMAモデルによる推定を行う．
+ARIMAモデルは階差系列に対してARMAモデルを用いたものである．
+直感的にはARMAモデルに従う時系列のランダムウォークであり，
+非定常な時系列の基本的なモデルの一つである．
+
+時系列を\(X_{t},\;t=1,2,\dotsc\)とし，
+ラグ作用素\(L\) (lag operator, backshift operator) を以下で定義する．
+#+begin_export latex
+  \begin{equation}
+    LX_{t}=X_{t-1}
+  \end{equation}
+#+end_export
+これを用いると，
+階差系列は
+#+begin_export latex
+  \begin{equation}
+    Y_{t}=X_{t}-X_{t-1}=(1-L)X_{t}
+  \end{equation}
+#+end_export
+と書け，高階の階差は作用素\((1-L)\)の羃で書くことができる．
+また次数\((p,d,q)\)のARIMAモデルは以下で定義される．
+#+begin_export latex
+  \begin{equation}
+    \begin{multlined}
+      (1-a_{1}L-a_{2}L^{2}-\dotsb-a_{p}L^{p})(1-L)^{d}X_{t}\\
+      =
+      (1+b_{1}L+b_{2}L^{2}+\dotsb+b_{q}L^{q})\epsilon_{t},\;
+      \epsilon_{t}\sim\mathcal{N}(0,\sigma^{2})
+    \end{multlined}
+  \end{equation}
+#+end_export
+
+今回対象とするデータは1階の階差で定常となっていると考えられるため，
+\(d=1\)のモデルを考えることになる．
+また，
+増大する傾向を一種のトレンドとしてモデル化するために
+ドリフト(drift)項を加えて以下のモデルを考える．
+#+begin_export latex
+  \begin{equation}
+    \begin{multlined}
+      (1-a_{1}L-a_{2}L^{2}-\dotsb-a_{p}L^{p})(1-L)(X_{t}+\beta t)\\
+      =
+      (1+b_{1}L+b_{2}L^{2}+\dotsb+b_{q}L^{q})\epsilon_{t},\;
+      \epsilon_{t}\sim\mathcal{N}(0,\sigma^{2})
+    \end{multlined}
+  \end{equation}
+#+end_export
+
+次数\((p,d,q)\)と対応する係数とドリフト，
+およびホワイトノイズの分散\(\sigma^{2}\)を
+推定した結果は以下のようになる．[fn:4]
+
+#+attr_latex: :options linenos
+#+begin_src R
+  ## drift付きのARIMAモデルの次数を自動推定
+  est.arima <- forecast::auto.arima(ltrain)
+  ## 推定されたモデルを表示
+  print(est.arima)
+  ## SARIMAモデルを当て嵌める場合は周期を指定する．
+  ## frequency(ltrain) <- 7 # 7日周期の成分を仮定
+  ## est.arima <- auto.arima(ltrain)
+  ## このデータではモデルの推定はうまくいかない
+#+end_src
+
+図\ref{fig:5} は推定されたモデルの良さを診断するためのプロットで，
+上から順に
+残差の推移，残差の自己相関，自己相関のLjung-Box 統計量(自己相関が0であるか検定)を
+表している．
+残差は無作為になっているように見えるが，
+7日毎の自己相関は若干残っており，
+7日以降のラグの無相関性は棄却されない．
+
+#+begin_export latex
+\begin{figure}[htbp]
+  \sidecaption{ARIMAモデルの診断．
+    \label{fig:5}}
+  \centering
+  \myGraph[1]{}
+\end{figure}
+#+end_export
+
+#+attr_latex: :options linenos
+#+begin_src R
+  ## 診断プロット
+  tsdiag(est.arima)
+  ## 残差に相関が残っているので，優れたモデルという訳ではない
+#+end_src
+
+推定されたモデルによる当て嵌め結果(モデルによる1期先の予測)を
+図\ref{fig:6} に示す．
+概周期成分による誤差(遅れ)はあるものの，
+それなりに良く追従していることがわかる．
+
+#+begin_export latex
+\begin{figure}[htbp]
+  \sidecaption{ARIMAモデルによる当て嵌め結果．
+    \label{fig:6}}
+  \centering
+  \myGraph[1]{}
+\end{figure}
+#+end_export
+
+#+attr_latex: :options linenos
+#+begin_src R
+  ## モデルによる当て嵌めの視覚化
+  p <- 
+      ggplot(data = fortify(est.arima) %>%
+		 dplyr::mutate(Index=as.Date(Index)),
+	     mapping = aes(x = Index,
+			   y = Data)) +
+      geom_line(colour = "skyblue") +
+      geom_line(mapping = aes(y = Fitted),
+		colour = "orange") +
+      scale_x_date(labels = date_format("%y-%m-%d"), 
+		   breaks = date_breaks("1 week")) + 
+      theme(axis.text.x = element_text(angle = 90,
+				       vjust = 0.5, hjust=1)) +
+      labs(title = "Fitted by ARIMA model",
+	   x = "date",
+	   y = "log(patients)")
+  print(p)
+  ggplotly()
+#+end_src
+
+このモデルを用いて，
+12月以降の患者数を予測した結果を
+80%信頼区間とともに示したのが図\ref{fig:7} である．
+
+#+begin_export latex
+\begin{figure}[htbp]
+  \sidecaption{ARIMAモデルによる予測．
+    \label{fig:7}}
+  \centering
+  \myGraph[1]{}
+\end{figure}
+#+end_export
+
+#+attr_latex: :options linenos
+#+begin_src R
+  ## 12月以降(最大60日)を予測してみる
+  p <- 
+      ggplot(data = fortify(forecast(est.arima,
+                                     h=min(length(test),60))) %>%
+		 dplyr::mutate(Index=as.Date(Index)) %>%
+		 left_join(fortify(test), by = "Index"), 
+	     mapping = aes(x = Index,
+			   y = exp(Data)),
+	     na.rm = TRUE) +
+      geom_line(colour = "skyblue",
+		na.rm = TRUE) +
+      geom_line(mapping = aes(y = test),
+		colour = "red",
+		na.rm = TRUE) +
+      geom_line(mapping = aes(y = exp(`Point Forecast`)),
+		colour = "royalblue",
+		na.rm = TRUE) +
+      geom_ribbon(mapping = aes(ymin = exp(`Lo 80`),
+				ymax = exp(`Hi 80`)),
+		  fill = "royalblue", alpha = 0.3,
+		  na.rm = TRUE) +
+      ## geom_ribbon(mapping = aes(ymin = exp(`Lo 95`),
+      ##   			ymax = exp(`Hi 95`)),
+      ##   	  fill = "royalblue", alpha = 0.1,
+      ##   	  na.rm = TRUE) +
+      scale_x_date(labels = date_format("%y-%m-%d"), 
+		   breaks = date_breaks("1 week")) + 
+      theme(axis.text.x = element_text(angle = 90,
+				       vjust = 0.5, hjust=1)) +
+      labs(title = "Prediction by ARIMA model",
+	   x = "date",
+	   y = "number of patients")
+  print(p)
+  ggplotly()
+#+end_src
+
+* 局所線形構造モデル
+
+もう一つは局所線形構造モデルと呼ばれるもので，  
+時系列に以下の構造を仮定したもである．
+
+観測された時系列\(X_{t}\)は，
+トレンド\(\mu_{t}\)と
+ホワイトノイズ\(\epsilon\)の2つの成分からなると仮定する．
+#+begin_export latex
+  \begin{equation}
+    X_{t}=\mu_{t}+\epsilon_{t},\;
+    \epsilon_{t}\sim\mathcal{N}(0,\sigma_{\epsilon}^{2})
+  \end{equation}
+#+end_export
+さらにトレンドは以下のような力学系に従うと仮定する．
+#+begin_export latex
+  \begin{align}
+    \mu_{t+1}
+    &=\mu_{t}+\nu_{t}+\xi_{t},\;
+      \xi_{t}\sim\mathcal{N}(0,\sigma_{\xi}^{2})\\
+    \nu_{t+1}
+    &=\nu_{t}+\zeta_{t},\;
+      \zeta_{t}\sim\mathcal{N}(0,\sigma_{\zeta}^{2})
+  \end{align}
+#+end_export
+直感的には\(\nu_{t}\)はトレンドの傾きに相当する．
+傾きがランダムウォークにより増減することにより，
+トレンドの変化の速度が変わるため，
+多項式より複雑な形状のトレンドを表すことができる．
+
+このモデルには3つのホワイトノイズが含まれているが，
+その分散の最尤推定を行うことによって，
+モデルの推定が行われる．
+
+#+attr_latex: :options linenos
+#+begin_src R
+  ## StructTS による方法
+  est.sts <- StructTS(ltrain)
+  ## 推定されたモデルを表示
+  print(est.sts)
+#+end_src
+
+ARIMAモデルと同様に，
+推定されたモデルの診断プロットを
+図\ref{fig:8} に示す．
+ARIMAより残差に相関が残っていることが確認できる．
+
+#+begin_export latex
+\begin{figure}[htbp]
+  \sidecaption{局所線形構造モデルの診断．
+    \label{fig:8}}
+  \centering
+  \myGraph[1]{}
+\end{figure}
+#+end_export
+
+#+attr_latex: :options linenos
+#+begin_src R
+  ## 診断プロット
+  tsdiag(est.sts)
+  ## こちらも残差に相関が残っているので，優れたモデルという訳ではない
+#+end_src
+
+推定されたモデルによる元の時系列の分解結果は
+図\ref{fig:9} のようになる．
+
+#+begin_export latex
+\begin{figure}[htbp]
+  \sidecaption{局所線形構造モデルによる時系列の分解．
+    level が \(\mu\)，
+    slope が \(\nu\)
+    に対応する．
+    \label{fig:9}}
+  \centering
+  \myGraph[1]{}
+\end{figure}
+#+end_export
+
+#+attr_latex: :options linenos
+#+begin_src R
+  ## StructTSによる時系列の分解結果
+  autoplot(est.sts)
+#+end_src
+
+モデルによる当て嵌め結果を
+図\ref{fig:10} に示す．
+ARIMAモデルより推定のラグが大きいことが見て取れる．
+
+#+begin_export latex
+\begin{figure}[htbp]
+  \sidecaption{局所線形構造モデルによる当て嵌め結果．
+    \label{fig:10}}
+  \centering
+  \myGraph[1]{}
+\end{figure}
+#+end_export
+
+#+attr_latex: :options linenos
+#+begin_src R
+  ## モデルによる当て嵌めの視覚化
+  p <- 
+      ggplot(data = fortify(forecast(est.sts)) %>%
+		 dplyr::mutate(Index=as.Date(Index)),
+	     mapping = aes(x = Index,
+			   y = Data),
+	     na.rm = TRUE) +
+      geom_line(colour = "skyblue",
+		na.rm = TRUE) +
+      geom_line(mapping = aes(y = Fitted),
+		colour = "orange",
+		na.rm = TRUE) +
+      scale_x_date(labels = date_format("%y-%m-%d"), 
+		   breaks = date_breaks("1 week")) + 
+      theme(axis.text.x = element_text(angle = 90,
+				       vjust = 0.5, hjust=1)) +
+      labs(title = "Fitted by Local Linear Structure model",
+	   x = "date",
+	   y = "log(patients)")
+  print(p)
+  ggplotly()
+#+end_src
+
+予測の結果は図\ref{fig:11} に示す．
+増加傾向は予測できており，
+信頼区間の中に実際の値は含まれているが，
+信頼区間は非常に広く，
+予測の精度はARIMAに劣ると考えられる．
+
+#+begin_export latex
+\begin{figure}[htbp]
+  \sidecaption{局所線形構造モデルによる予測．
+    \label{fig:11}}
+  \centering
+  \myGraph[1]{}
+\end{figure}
+#+end_export
+
+#+attr_latex: :options linenos
+#+begin_src R
+  ## 12月以降(最大60日)を予測してみる
+  p <- 
+      ggplot(data = fortify(forecast(est.sts,
+                                     h=min(length(test),60))) %>%
+		 dplyr::mutate(Index=as.Date(Index)) %>%
+		 left_join(fortify(test), by = "Index"), 
+	     mapping = aes(x = Index,
+			   y = exp(Data)),
+	     na.rm = TRUE) +
+      geom_line(colour = "skyblue",
+		na.rm = TRUE) +
+      geom_line(mapping = aes(y = test),
+		colour = "red",
+		na.rm = TRUE) +
+      geom_line(mapping = aes(y = exp(`Point Forecast`)),
+		colour = "royalblue",
+		na.rm = TRUE) +
+      geom_ribbon(mapping = aes(ymin = exp(`Lo 80`),
+				ymax = exp(`Hi 80`)),
+		  fill = "royalblue", alpha = 0.3,
+		  na.rm = TRUE) +
+      ## geom_ribbon(mapping = aes(ymin = exp(`Lo 95`),
+      ##   			ymax = exp(`Hi 95`)),
+      ##   	  fill = "royalblue", alpha = 0.1,
+      ##   	  na.rm = TRUE) +
+      scale_x_date(labels = date_format("%y-%m-%d"), 
+		   breaks = date_breaks("1 week")) + 
+      theme(axis.text.x = element_text(angle = 90,
+				       vjust = 0.5, hjust=1)) +
+      labs(title = "Prediction by Local Linear Structure model",
+	   x = "date",
+	   y = "number of patients")
+  print(p)
+  ggplotly()
+#+end_src
+
+* ARIMAモデルによる予測
+
+前2節の結果から，
+このデータに対してはARIMAモデルによる予測の方が精度が良いと考えられる．
+階差系列がARMAモデルで良く近似されるということは，
+9月中旬以降の感染拡大の動特性があまり変化していないということであり，
+集団の行動がこの期間でほとんど変様していないことが示唆される．
+
+現在までのデータを用いてARIMAモデルを再度構築し，
+これを用いて60日間の予測を行った結果を
+図\ref{fig:12} に示す．
+内側は80%信頼区間，外側は95%信頼区間である．
+
+#+begin_export latex
+\begin{figure}[htbp]
+  \sidecaption{ARIMAモデルによる今後60日間の予測．
+    \label{fig:12}}
+  \centering
+  \myGraph[1]{}
+\end{figure}
+#+end_export
+
+#+attr_latex: :options linenos
+#+begin_src R
+  ## モデルの推定
+  est <- auto.arima(log(window(patients,start="2020-09-15")))
+  ## 推定されたモデルの表示
+  print(est)
+  ## 現在から60日先まで予測してみる
+  p <- 
+      ggplot(data = fortify(forecast(est,h=60)) %>%
+		 dplyr::mutate(Index=as.Date(Index)),
+	     mapping = aes(x = Index,
+			   y = exp(Data)),
+	     na.rm = TRUE) +
+      geom_line(colour = "skyblue",
+		na.rm = TRUE) +
+      geom_line(mapping = aes(y = exp(`Point Forecast`)),
+		colour = "royalblue",
+		na.rm = TRUE) +
+      geom_ribbon(mapping = aes(ymin = exp(`Lo 80`),
+				ymax = exp(`Hi 80`)),
+		  fill = "royalblue", alpha = 0.3,
+		  na.rm = TRUE) +
+      geom_ribbon(mapping = aes(ymin = exp(`Lo 95`),
+				ymax = exp(`Hi 95`)),
+		  fill = "royalblue", alpha = 0.1,
+		  na.rm = TRUE) +
+      scale_x_date(labels = date_format("%y-%m-%d"), 
+		   breaks = date_breaks("1 week")) + 
+      theme(axis.text.x = element_text(angle = 90,
+				       vjust = 0.5, hjust=1)) +
+      labs(title = "Prediction by ARIMA model (based on Sep.15 - present)",
+	   x = "date",
+	   y = "number of patients")
+  print(p)
+  ggplotly()
+#+end_src
+
+* おわりに
+
+対象とした患者数の推移は極めて非定常なデータであるが，
+時系列を適切に変換し，
+生成モデルがある程度定常な区間を捉えることができれば，
+基本的なARMAモデルでも良い推定を行うことができる．
+  
+#+begin_src R :exports none :tangle no
+  dev.off()
+#+end_src
+
+* Footnotes
+
+[fn:1][[https://www.mhlw.go.jp/content/pcr_positive_daily.csv][厚生労働省の患者数データ]]
+
+[fn:2]東京都の分析結果から9月中旬あたりが第3波の開始と考えらるので，
+ここでは9月15日以降のデータを用いることとする．
+
+[fn:3]7日毎の周期成分であれば7日階差を取ることにより打ち消される．
+
+[fn:4]季節成分 (seasonal) を加えた
+SARIMAモデルを考えることもできるが，
+このデータでは周期性が曖昧なため，
+モデルの推定はうまくいかなかった．
+コードのコメント部分を参照．
+
+* COMMENT ローカル変数
+# Local Variables:
+# org-latex-listings: minted
+# End:

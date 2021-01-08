@@ -16,6 +16,13 @@
     - トレンド成分と周期成分の分解
     - 2次のトレンドにして勾配を推定
 
+* 厚生労働省の全国感染者数 (predicts)
+  - https://www.mhlw.go.jp/content/pcr_positive_daily.csv
+  - 簡単な時系列モデルによる予測
+    - ARIMAモデル (forecast::auto.arima)
+    - 局所線形構造モデル (stats::StructTS)
+  - 9月以降の推移はARIMAで十分良く推定可能
+  
 * TODO 人の移動に関するデータ 
   - https://covid19.apple.com/mobility
   - https://www.google.com/covid19/mobility/

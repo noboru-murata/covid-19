@@ -735,8 +735,6 @@ for(s in c("prior","postr")){
 #+end_src
 
 
-* COMMENT ローカル変数
-
 * Footnotes
 
 [fn:10]愚直には，
@@ -783,6 +781,7 @@ KFASでは季節成分の推定方法として
 母数の更新関数をおそらく設定する必要があるが，
 検証できていない．
 
+* COMMENT ローカル変数
 # Local Variables:
 # org-latex-listings: minted
 # End:
